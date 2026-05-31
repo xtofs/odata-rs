@@ -1,0 +1,34 @@
+<Schema Namespace="Sales" Alias="S">
+    <Annotation Term="Core.Description" String="Sales schema"/>
+
+    <EntityType Name="Customer">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="Name" Type="Edm.String" MaxLength="100" Unicode="true">
+            <Annotation Term="Core.Description" String="Display name"/>
+        </Property>
+        <NavigationProperty Name="Orders" Type="Collection(Sales.Order)" Partner="Customer"/>
+    </EntityType>
+
+    <EntityType Name="Order">
+        <Key><PropertyRef Name="Id"/></Key>
+        <Property Name="Id" Type="Edm.Int32" Nullable="false"/>
+        <Property Name="Total" Type="Edm.Decimal" Precision="18" Scale="2"/>
+        <NavigationProperty Name="Customer" Type="Sales.Customer" Nullable="false" Partner="Orders">
+            <ReferentialConstraint Property="CustomerId" ReferencedProperty="Id"/>
+            <OnDelete Action="Cascade"/>
+        </NavigationProperty>
+    </EntityType>
+
+    <EnumType Name="Region" UnderlyingType="Edm.Int32">
+        <Member Name="NA" Value="1"/>
+        <Member Name="EU" Value="2"/>
+    </EnumType>
+
+    <EntityContainer Name="Container">
+        <EntitySet Name="Customers" EntityType="Sales.Customer">
+            <NavigationPropertyBinding Path="Orders" Target="Orders"/>
+        </EntitySet>
+        <EntitySet Name="Orders" EntityType="Sales.Order"/>
+    </EntityContainer>
+</Schema>

@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug Rust example: csdl_to_model",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--package",
+                    "edm",
+                    "--example",
+                    "csdl_to_model"
+                ],
+                "filter": {
+                    "name": "csdl_to_model",
+                    "kind": "example"
+                }
+            },
+            "cwd": "${workspaceFolder}/crates/edm",
+            "args": [],
+            "sourceLanguages": [
+                "rust"
+            ]
+        }
+    ]
+}
