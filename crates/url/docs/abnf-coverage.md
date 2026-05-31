@@ -10,7 +10,7 @@
 | `resourcePath`                                               | partially implemented | `crates/url/src/lib.rs::ResourcePath` and `ODataQuery::from_url` |
 | `each` / `count` / `ref` / `value` path markers              | implemented           | `crates/url/src/lib.rs::ODataQuery` and `parse_resource_path`    |
 | `$select` / `select`                                         | partially implemented | `crates/url/src/lib.rs::SelectClause::parse`                     |
-| `$filter` / `filter`                                         | partially implemented | `crates/url/src/lib.rs::FilterClause`                            |
+| `$filter` / `filter` / `commonExpr`                          | partially implemented | `crates/url/src/lib.rs::FilterClause`                            |
 | `$expand` / `expand`                                         | partially implemented | `crates/url/src/lib.rs::ExpandClause::parse`                     |
 | `$top` / `top`                                               | implemented           | `crates/url/src/lib.rs::ODataQuery::from_url`                    |
 | `$skip` / `skip`                                             | implemented           | `crates/url/src/lib.rs::ODataQuery::from_url`                    |
@@ -25,6 +25,6 @@
 Notes:
 
 - `handled by dependency` means the generic URL parser owns that boundary.
-- `partially implemented` means the value is present in `ODataQuery`, but its internal OData grammar is still coarse.
+- `partially implemented` means the value is present in `ODataQuery`, but its internal OData grammar is still incomplete. `$filter` now uses a structured expression tree for a `commonExpr` subset.
 - `deferred` means the rule is not represented in `ODataQuery` yet and does not have a dedicated parser path.
 - The parser rejects duplicate well-known options and invalid numeric or boolean values with `ParseError`.

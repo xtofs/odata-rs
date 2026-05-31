@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Debug};
 
 use url::Url;
 
@@ -53,7 +53,78 @@ pub struct SelectClause {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilterClause {
-    pub expression: String,
+    pub expression: FilterExpression,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterExpression {
+    pub kind: FilterExpressionKind,
+    /// Byte span in the decoded `$filter` expression string.
+    pub span: FilterSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilterExpressionKind {
+    Literal(FilterLiteral),
+    Member(FilterMemberPath),
+    FunctionCall(FilterFunctionCall),
+    Unary {
+        operator: FilterUnaryOperator,
+        operand: Box<FilterExpression>,
+    },
+    Binary {
+        left: Box<FilterExpression>,
+        operator: FilterBinaryOperator,
+        right: Box<FilterExpression>,
+    },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct FilterSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilterLiteral {
+    Null,
+    Boolean(bool),
+    Number(String),
+    String(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterMemberPath {
+    pub segments: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilterFunctionCall {
+    pub name: String,
+    pub arguments: Vec<FilterExpression>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilterUnaryOperator {
+    Not,
+    Negate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilterBinaryOperator {
+    Or,
+    And,
+    Equal,
+    NotEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +147,12 @@ pub enum ParseError {
     InvalidInteger { option: String, value: String },
     #[error("invalid boolean for {option}: {value}")]
     InvalidBoolean { option: String, value: String },
+    #[error("invalid filter expression at position {position}: {message}")]
+    InvalidFilterExpression {
+        value: String,
+        position: usize,
+        message: String,
+    },
 }
 
 impl ODataQuery {
@@ -105,13 +182,7 @@ impl ODataQuery {
                     assign_once(&mut select, "select", SelectClause::parse(&option_value)?)?;
                 }
                 "filter" => {
-                    assign_once(
-                        &mut filter,
-                        "filter",
-                        FilterClause {
-                            expression: option_value,
-                        },
-                    )?;
+                    assign_once(&mut filter, "filter", FilterClause::parse(&option_value)?)?;
                 }
                 "expand" => {
                     assign_once(&mut expand, "expand", ExpandClause::parse(&option_value)?)?;
@@ -196,6 +267,24 @@ impl SelectClause {
     }
 }
 
+impl FilterClause {
+    fn parse(value: &str) -> Result<Self, ParseError> {
+        let mut parser = FilterParser::new(value);
+        let expression = parser.parse_expression()?;
+        parser.consume_whitespace();
+
+        if !parser.is_eof() {
+            return Err(ParseError::InvalidFilterExpression {
+                value: value.to_string(),
+                position: parser.position(),
+                message: "unexpected trailing input".to_string(),
+            });
+        }
+
+        Ok(Self { expression })
+    }
+}
+
 impl ExpandClause {
     fn parse(value: &str) -> Result<Self, ParseError> {
         Ok(Self {
@@ -256,95 +345,493 @@ fn split_list(value: &str) -> Vec<String> {
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{
-        ExpandClause, FilterClause, ODataQuery, OrderByClause, ParseError, ResourcePath,
-        SelectClause,
-    };
+struct FilterParser<'a> {
+    input: &'a str,
+    index: usize,
+}
 
-    #[test]
-    fn parses_typed_query_options() {
-        let query = ODataQuery::parse(
-            "https://example.test/odata/People(1)/Orders?$select=Id,Name&$filter=Rating%20gt%205&$expand=Items,Customer&$top=10&$skip=3&$orderby=Name%20desc&$count=true&x-custom=abc#anchor",
-        )
-        .expect("query should parse");
+impl<'a> FilterParser<'a> {
+    fn new(input: &'a str) -> Self {
+        Self { input, index: 0 }
+    }
 
-        assert_eq!(
-            query.resource_path,
-            ResourcePath {
-                segments: vec![
-                    "odata".to_string(),
-                    "People(1)".to_string(),
-                    "Orders".to_string()
-                ],
+    fn position(&self) -> usize {
+        self.index
+    }
+
+    fn is_eof(&self) -> bool {
+        self.index >= self.input.len()
+    }
+
+    fn current(&self) -> &'a str {
+        &self.input[self.index..]
+    }
+
+    fn consume_whitespace(&mut self) {
+        while let Some(ch) = self.current().chars().next() {
+            if ch.is_whitespace() {
+                self.index += ch.len_utf8();
+            } else {
+                break;
             }
-        );
-        assert!(!query.each);
-        assert!(!query.count);
-        assert!(!query.r#ref);
-        assert!(!query.value);
-        assert_eq!(
-            query.select,
-            Some(SelectClause {
-                items: vec!["Id".to_string(), "Name".to_string()],
-            })
-        );
-        assert_eq!(
-            query.filter,
-            Some(FilterClause {
-                expression: "Rating gt 5".to_string(),
-            })
-        );
-        assert_eq!(
-            query.expand,
-            Some(ExpandClause {
-                items: vec!["Items".to_string(), "Customer".to_string()],
-            })
-        );
-        assert_eq!(query.top, Some(10));
-        assert_eq!(query.skip, Some(3));
-        assert_eq!(
-            query.orderby,
-            Some(OrderByClause {
-                expression: "Name desc".to_string(),
-            })
-        );
-        assert_eq!(query.inlinecount, Some(true));
-        assert_eq!(
-            query.custom.get("x-custom").cloned(),
-            Some(vec!["abc".to_string()])
-        );
-        assert_eq!(query.fragment.as_deref(), Some("anchor"));
+        }
     }
 
-    #[test]
-    fn parses_path_markers_as_flags() {
-        let query = ODataQuery::parse("https://example.test/Customers/$count/$ref/$value/$each")
-            .expect("query should parse");
-
-        assert_eq!(query.resource_path.segments, vec!["Customers"]);
-        assert!(query.count);
-        assert!(query.r#ref);
-        assert!(query.value);
-        assert!(query.each);
+    fn parse_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        self.parse_or_expression()
     }
 
-    #[test]
-    fn rejects_invalid_urls() {
-        let error = ODataQuery::parse("not a url").expect_err("invalid url should fail");
+    fn parse_or_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        let mut left = self.parse_and_expression()?;
 
-        assert!(matches!(error, ParseError::InvalidUrl(_)));
+        loop {
+            self.consume_whitespace();
+            if !self.consume_keyword("or") {
+                break;
+            }
+
+            let right = self.parse_and_expression()?;
+            let span = FilterSpan {
+                start: left.span.start,
+                end: right.span.end,
+            };
+            left = FilterExpression {
+                kind: FilterExpressionKind::Binary {
+                    left: Box::new(left),
+                    operator: FilterBinaryOperator::Or,
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(left)
     }
 
-    #[test]
-    fn rejects_invalid_boolean_and_duplicates() {
-        let boolean_error = ODataQuery::parse("https://example.test/Customers?$count=maybe")
-            .expect_err("invalid boolean should fail");
-        assert!(matches!(boolean_error, ParseError::InvalidBoolean { .. }));
+    fn parse_and_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        let mut left = self.parse_comparison_expression()?;
 
-        let duplicate_error = ODataQuery::parse("https://example.test/Customers?$top=1&$top=2")
-            .expect_err("duplicate option should fail");
-        assert!(matches!(duplicate_error, ParseError::DuplicateQueryOption(name) if name == "top"));
+        loop {
+            self.consume_whitespace();
+            if !self.consume_keyword("and") {
+                break;
+            }
+
+            let right = self.parse_comparison_expression()?;
+            let span = FilterSpan {
+                start: left.span.start,
+                end: right.span.end,
+            };
+            left = FilterExpression {
+                kind: FilterExpressionKind::Binary {
+                    left: Box::new(left),
+                    operator: FilterBinaryOperator::And,
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(left)
+    }
+
+    fn parse_comparison_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        let mut left = self.parse_additive_expression()?;
+
+        loop {
+            self.consume_whitespace();
+            let operator = if self.consume_keyword("eq") {
+                Some(FilterBinaryOperator::Equal)
+            } else if self.consume_keyword("ne") {
+                Some(FilterBinaryOperator::NotEqual)
+            } else if self.consume_keyword("gt") {
+                Some(FilterBinaryOperator::GreaterThan)
+            } else if self.consume_keyword("ge") {
+                Some(FilterBinaryOperator::GreaterThanOrEqual)
+            } else if self.consume_keyword("lt") {
+                Some(FilterBinaryOperator::LessThan)
+            } else if self.consume_keyword("le") {
+                Some(FilterBinaryOperator::LessThanOrEqual)
+            } else {
+                None
+            };
+
+            let Some(operator) = operator else {
+                break;
+            };
+
+            let right = self.parse_additive_expression()?;
+            let span = FilterSpan {
+                start: left.span.start,
+                end: right.span.end,
+            };
+            left = FilterExpression {
+                kind: FilterExpressionKind::Binary {
+                    left: Box::new(left),
+                    operator,
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(left)
+    }
+
+    fn parse_additive_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        let mut left = self.parse_multiplicative_expression()?;
+
+        loop {
+            self.consume_whitespace();
+            let operator = if self.consume_keyword("add") {
+                Some(FilterBinaryOperator::Add)
+            } else if self.consume_keyword("sub") {
+                Some(FilterBinaryOperator::Subtract)
+            } else {
+                None
+            };
+
+            let Some(operator) = operator else {
+                break;
+            };
+
+            let right = self.parse_multiplicative_expression()?;
+            let span = FilterSpan {
+                start: left.span.start,
+                end: right.span.end,
+            };
+            left = FilterExpression {
+                kind: FilterExpressionKind::Binary {
+                    left: Box::new(left),
+                    operator,
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(left)
+    }
+
+    fn parse_multiplicative_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        let mut left = self.parse_unary_expression()?;
+
+        loop {
+            self.consume_whitespace();
+            let operator = if self.consume_keyword("mul") {
+                Some(FilterBinaryOperator::Multiply)
+            } else if self.consume_keyword("div") {
+                Some(FilterBinaryOperator::Divide)
+            } else if self.consume_keyword("mod") {
+                Some(FilterBinaryOperator::Modulo)
+            } else {
+                None
+            };
+
+            let Some(operator) = operator else {
+                break;
+            };
+
+            let right = self.parse_unary_expression()?;
+            let span = FilterSpan {
+                start: left.span.start,
+                end: right.span.end,
+            };
+            left = FilterExpression {
+                kind: FilterExpressionKind::Binary {
+                    left: Box::new(left),
+                    operator,
+                    right: Box::new(right),
+                },
+                span,
+            };
+        }
+
+        Ok(left)
+    }
+
+    fn parse_unary_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        self.consume_whitespace();
+        let start = self.position();
+
+        if self.consume_keyword("not") {
+            let operand = self.parse_unary_expression()?;
+            return Ok(FilterExpression {
+                span: FilterSpan {
+                    start,
+                    end: operand.span.end,
+                },
+                kind: FilterExpressionKind::Unary {
+                    operator: FilterUnaryOperator::Not,
+                    operand: Box::new(operand),
+                },
+            });
+        }
+
+        if self.consume_char('-') {
+            let operand = self.parse_unary_expression()?;
+            return Ok(FilterExpression {
+                span: FilterSpan {
+                    start,
+                    end: operand.span.end,
+                },
+                kind: FilterExpressionKind::Unary {
+                    operator: FilterUnaryOperator::Negate,
+                    operand: Box::new(operand),
+                },
+            });
+        }
+
+        self.parse_primary_expression()
+    }
+
+    fn parse_primary_expression(&mut self) -> Result<FilterExpression, ParseError> {
+        self.consume_whitespace();
+        let start = self.position();
+
+        if self.consume_char('(') {
+            let mut expression = self.parse_expression()?;
+            self.consume_whitespace();
+            if !self.consume_char(')') {
+                return self.error("expected ')' to close grouped expression");
+            }
+            expression.span = FilterSpan {
+                start,
+                end: self.position(),
+            };
+            return Ok(expression);
+        }
+
+        if let Some(text) = self.consume_string_literal() {
+            return Ok(FilterExpression {
+                kind: FilterExpressionKind::Literal(FilterLiteral::String(text)),
+                span: FilterSpan {
+                    start,
+                    end: self.position(),
+                },
+            });
+        }
+
+        if let Some(number) = self.consume_number_literal() {
+            return Ok(FilterExpression {
+                kind: FilterExpressionKind::Literal(FilterLiteral::Number(number)),
+                span: FilterSpan {
+                    start,
+                    end: self.position(),
+                },
+            });
+        }
+
+        if let Some(identifier) = self.consume_identifier() {
+            if identifier.eq_ignore_ascii_case("true") {
+                return Ok(FilterExpression {
+                    kind: FilterExpressionKind::Literal(FilterLiteral::Boolean(true)),
+                    span: FilterSpan {
+                        start,
+                        end: self.position(),
+                    },
+                });
+            }
+
+            if identifier.eq_ignore_ascii_case("false") {
+                return Ok(FilterExpression {
+                    kind: FilterExpressionKind::Literal(FilterLiteral::Boolean(false)),
+                    span: FilterSpan {
+                        start,
+                        end: self.position(),
+                    },
+                });
+            }
+
+            if identifier.eq_ignore_ascii_case("null") {
+                return Ok(FilterExpression {
+                    kind: FilterExpressionKind::Literal(FilterLiteral::Null),
+                    span: FilterSpan {
+                        start,
+                        end: self.position(),
+                    },
+                });
+            }
+
+            self.consume_whitespace();
+            if self.consume_char('(') {
+                let mut arguments = Vec::new();
+
+                self.consume_whitespace();
+                if !self.consume_char(')') {
+                    loop {
+                        let argument = self.parse_expression()?;
+                        arguments.push(argument);
+
+                        self.consume_whitespace();
+                        if self.consume_char(')') {
+                            break;
+                        }
+
+                        if !self.consume_char(',') {
+                            return self.error("expected ',' or ')' in function call");
+                        }
+                    }
+                }
+
+                return Ok(FilterExpression {
+                    kind: FilterExpressionKind::FunctionCall(FilterFunctionCall {
+                        name: identifier,
+                        arguments,
+                    }),
+                    span: FilterSpan {
+                        start,
+                        end: self.position(),
+                    },
+                });
+            }
+
+            return Ok(FilterExpression {
+                kind: FilterExpressionKind::Member(FilterMemberPath {
+                    segments: identifier
+                        .split('/')
+                        .filter(|segment| !segment.is_empty())
+                        .map(ToOwned::to_owned)
+                        .collect(),
+                }),
+                span: FilterSpan {
+                    start,
+                    end: self.position(),
+                },
+            });
+        }
+
+        self.error("expected filter expression")
+    }
+
+    fn consume_keyword(&mut self, keyword: &str) -> bool {
+        let mut candidate = self.current().chars();
+
+        for expected in keyword.chars() {
+            let Some(actual) = candidate.next() else {
+                return false;
+            };
+
+            if !actual.eq_ignore_ascii_case(&expected) {
+                return false;
+            }
+        }
+
+        if let Some(next) = candidate.next() {
+            if is_identifier_char(next) {
+                return false;
+            }
+        }
+
+        self.index += keyword.len();
+        true
+    }
+
+    fn consume_char(&mut self, expected: char) -> bool {
+        if self.current().starts_with(expected) {
+            self.index += expected.len_utf8();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn consume_identifier(&mut self) -> Option<String> {
+        let mut characters = self.current().char_indices();
+        let (_, first) = characters.next()?;
+        if !is_identifier_start(first) {
+            return None;
+        }
+
+        let mut end = first.len_utf8();
+        for (offset, ch) in characters {
+            if is_identifier_char(ch) {
+                end = offset + ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+
+        let identifier = &self.current()[..end];
+        self.index += end;
+        Some(identifier.to_string())
+    }
+
+    fn consume_string_literal(&mut self) -> Option<String> {
+        if !self.current().starts_with('\'') {
+            return None;
+        }
+
+        self.index += 1;
+        let mut value = String::new();
+
+        while let Some(ch) = self.current().chars().next() {
+            self.index += ch.len_utf8();
+
+            if ch == '\'' {
+                if self.current().starts_with('\'') {
+                    self.index += 1;
+                    value.push('\'');
+                    continue;
+                }
+
+                return Some(value);
+            }
+
+            value.push(ch);
+        }
+
+        None
+    }
+
+    fn consume_number_literal(&mut self) -> Option<String> {
+        let mut seen_digit = false;
+        let mut seen_dot = false;
+        let mut end = 0usize;
+
+        for (offset, ch) in self.current().char_indices() {
+            if ch.is_ascii_digit() {
+                seen_digit = true;
+                end = offset + ch.len_utf8();
+                continue;
+            }
+
+            if ch == '.' && !seen_dot {
+                seen_dot = true;
+                end = offset + ch.len_utf8();
+                continue;
+            }
+
+            break;
+        }
+
+        if !seen_digit {
+            return None;
+        }
+
+        let value = self.current()[..end].to_string();
+        self.index += end;
+        Some(value)
+    }
+
+    fn error<T>(&self, message: &str) -> Result<T, ParseError> {
+        Err(ParseError::InvalidFilterExpression {
+            value: self.input.to_string(),
+            position: self.index,
+            message: message.to_string(),
+        })
     }
 }
+
+fn is_identifier_start(ch: char) -> bool {
+    ch.is_ascii_alphabetic() || ch == '_' || ch == '$'
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '$' | '/' | '.')
+}
+
+#[cfg(test)]
+mod tests;
+
+mod display;
