@@ -44,9 +44,9 @@ fn parses_typed_query_options() {
                     }),
                     operator: FilterBinaryOperator::GreaterThan,
                     right: Box::new(FilterExpression {
-                        kind: FilterExpressionKind::Literal(FilterLiteral::Number(
-                            "5".to_string(),
-                        )),
+                        kind: FilterExpressionKind::Literal(
+                            FilterLiteral::Number("5".to_string(),)
+                        ),
                         span: super::FilterSpan { start: 10, end: 11 },
                     }),
                 },
@@ -190,4 +190,37 @@ fn rejects_invalid_filter_expressions() {
         .expect_err("incomplete expression should fail");
 
     assert!(matches!(error, ParseError::InvalidFilterExpression { .. }));
+}
+
+#[test]
+fn display_keeps_and_or_precedence_with_parentheses() {
+    let query = ODataQuery::parse(
+        "https://example.test/Customers?$filter=(A%20eq%201%20or%20B%20eq%202)%20and%20C%20eq%203",
+    )
+    .expect("query should parse");
+
+    let display = query.filter.expect("filter should be present").to_string();
+
+    assert_eq!(display, "(A eq 1 or B eq 2) and C eq 3");
+}
+
+#[test]
+fn display_formats_unary_not_as_keyword() {
+    let query = ODataQuery::parse("https://example.test/Customers?$filter=not%20(A%20eq%201)")
+        .expect("query should parse");
+
+    let display = query.filter.expect("filter should be present").to_string();
+
+    assert_eq!(display, "not (A eq 1)");
+}
+
+#[test]
+fn display_escapes_single_quotes_in_string_literals() {
+    let query =
+        ODataQuery::parse("https://example.test/Customers?$filter=Name%20eq%20%27O%27%27Brien%27")
+            .expect("query should parse");
+
+    let display = query.filter.expect("filter should be present").to_string();
+
+    assert_eq!(display, "Name eq 'O''Brien'");
 }
