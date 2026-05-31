@@ -36,7 +36,7 @@ These ABNF rules are already projected into the public `ODataQuery` shape:
 | `r#ref`                  | `ref`                    | implemented               |
 | `value`                  | `value`                  | implemented               |
 | `select`                 | `select`                 | partially implemented     |
-| `filter`                 | `filter`                 | partially implemented     |
+| `filter`                 | `filter` / `commonExpr`  | partially implemented     |
 | `expand`                 | `expand`                 | partially implemented     |
 | `top`                    | `top`                    | implemented               |
 | `skip`                   | `skip`                   | implemented               |
@@ -45,7 +45,7 @@ These ABNF rules are already projected into the public `ODataQuery` shape:
 | `custom`                 | `customQueryOption`      | implemented               |
 | `fragment`               | `context` / URL fragment | implemented by dependency |
 
-`partially implemented` means the property is present and typed, but the internal grammar is still coarse. For example, `select`, `expand`, `filter`, and `orderby` are not yet parsed into full expression trees.
+`partially implemented` means the property is present and typed, but the internal grammar is still incomplete. For example, `select`, `expand`, and `orderby` are still coarse. `filter` now parses a structured `commonExpr` subset (logical, comparison, arithmetic, unary, function calls, literals, and grouped expressions), but deferred constructs like lambda operators are not yet supported.
 
 ## Deferred ABNF
 
