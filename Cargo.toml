@@ -1,3 +1,23 @@
+[package]
+name = "odata-rs"
+version = "0.0.1"
+edition = "2024"
+
 [workspace]
-members = ["crates/edm", "crates/url"]
+members = ["crates/edm", "crates/url", "crates/service"]
 resolver = "2"
+
+[workspace.package]
+version = "0.0.1"
+
+[features]
+default = ["full"]
+edm = ["dep:odata_edm"]
+url = ["dep:odata_url"]
+service = ["dep:odata_service"]
+full = ["edm", "url", "service"]
+
+[dependencies]
+odata_edm = { package = "odata-rs-edm", path = "crates/edm", optional = true }
+odata_url = { package = "odata-rs-url", path = "crates/url", optional = true }
+odata_service = { package = "odata-rs-service", path = "crates/service", optional = true }

@@ -1,7 +1,10 @@
 [package]
-name = "odata-url"
-version = "0.1.0"
+name = "odata-rs-url"
+version.workspace = true
 edition = "2024"
+
+[lib]
+name = "odata_url"
 
 [dependencies]
 itertools = "0.14.0"

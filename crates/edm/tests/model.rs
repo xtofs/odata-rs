@@ -4,13 +4,13 @@
 //! builder → semantic resolver. Failures here usually mean a regression in
 //! the resolver itself, but they double as smoke tests for the whole stack.
 
-use edm::EdmModel;
-use edm::builder::build_model;
-use edm::model::{
+use odata_edm::EdmModel;
+use odata_edm::builder::build_model;
+use odata_edm::model::{
     NamedElementRef, NamedTypeId, PrimitiveKind, StructuralTypeId, TypeRef,
     path::TargetPath,
 };
-use edm::reader::CsdlReader;
+use odata_edm::reader::CsdlReader;
 
 fn resolve(xml: &str) -> EdmModel {
     let mut r = CsdlReader::from_reader(xml.as_bytes());
@@ -271,7 +271,7 @@ fn entity_container_with_sets_resolves_and_bindings_link_correctly() {
 
 #[test]
 fn annotations_are_carried_from_syntactic_to_semantic() {
-    use edm::expr::CsdlAnnotationExpression;
+    use odata_edm::expr::CsdlAnnotationExpression;
     let xml = r#"<Schema Namespace="N">
         <Annotation Term="Core.Description" String="schema-level"/>
         <EntityType Name="T">
@@ -334,7 +334,7 @@ fn duplicate_type_name_is_reported() {
     assert!(
         errors
             .iter()
-            .any(|e| matches!(e.kind, edm::model::ResolutionErrorKind::DuplicateName(_))),
+            .any(|e| matches!(e.kind, odata_edm::model::ResolutionErrorKind::DuplicateName(_))),
         "got errors: {errors:#?}"
     );
 }
@@ -397,7 +397,7 @@ fn resolve_path_returns_unknown_type_for_missing_name() {
     let err = m.resolve_path(&path).unwrap_err();
     assert!(matches!(
         err.kind,
-        edm::model::ResolutionErrorKind::UnknownType(_)
+        odata_edm::model::ResolutionErrorKind::UnknownType(_)
     ));
 }
 

@@ -1,12 +1,12 @@
-//! Data-driven tests for [`edm::builder::build_model`].
+//! Data-driven tests for [`odata_edm::builder::build_model`].
 //!
 //! Add new cases by appending more `#[test]` functions. Each test stands on
 //! its own; failures are reported individually.
 
-use edm::builder::build_model;
-use edm::expr::CsdlAnnotationExpression;
-use edm::reader::CsdlReader;
-use edm::syntactic::*;
+use odata_edm::builder::build_model;
+use odata_edm::expr::CsdlAnnotationExpression;
+use odata_edm::reader::CsdlReader;
+use odata_edm::syntactic::*;
 
 fn build(xml: &str) -> EdmModel {
     let mut r = CsdlReader::from_reader(xml.as_bytes());

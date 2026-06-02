@@ -6,18 +6,18 @@
 //! Stage 1 prints the token stream produced by `CsdlReader`, showing how the
 //! reader normalizes CSDL's inline-attribute vs nested-element forms.
 //!
-//! Stage 2 hands the same input to `edm::builder::build_model` and pretty-
+//! Stage 2 hands the same input to `odata_edm::builder::build_model` and pretty-
 //! prints the resulting *syntactic* model — the concrete-tree form, faithful
 //! to the XML but with all references still as strings.
 //!
-//! Stage 3 demonstrates the *surface API* — the resolved `edm::EdmModel`.
+//! Stage 3 demonstrates the *surface API* — the resolved `odata_edm::EdmModel`.
 //! Today it just shows the synthetic `Edm` schema; once
 //! `EdmModel::from_parsed(syntactic)` is implemented it becomes the canonical
 //! entry point most consumers will use.
 
-use edm::Result;
-use edm::builder::build_model;
-use edm::reader::{CsdlReader, CsdlToken};
+use odata_edm::Result;
+use odata_edm::builder::build_model;
+use odata_edm::reader::{CsdlReader, CsdlToken};
 
 /// Inlined at compile time from `examples/sample.csdl.xml` so that line/column
 /// positions printed by Stage 1 line up with the file on disk — open the file
@@ -49,17 +49,17 @@ fn main() -> Result<()> {
     println!(" Stage 2: token stream  →  syntactic EdmModel");
     println!("================================================================");
     let mut reader = CsdlReader::from_reader(SAMPLE_CSDL.as_bytes());
-    let parsed: edm::syntactic::EdmModel = build_model(&mut reader)?;
+    let parsed: odata_edm::syntactic::EdmModel = build_model(&mut reader)?;
     println!("{parsed:#?}");
 
     println!();
     println!("================================================================");
-    println!(" Stage 3: surface API — edm::EdmModel (semantic / resolved)");
+    println!(" Stage 3: surface API — odata_edm::EdmModel (semantic / resolved)");
     println!("================================================================");
-    let model = edm::EdmModel::from_parsed(parsed).map_err(|errs| {
+    let model = odata_edm::EdmModel::from_parsed(parsed).map_err(|errs| {
         // The resolver returns a batch of diagnostics; surface the first one
         // as our short-circuit error and let the example exit.
-        edm::Error::Csdl(format!(
+        odata_edm::Error::Csdl(format!(
             "{} resolution error(s); first: {}",
             errs.len(),
             errs[0]
@@ -112,8 +112,8 @@ fn main() -> Result<()> {
 
     // ==========================
     // Resolve a named type via the path API and walk it.
-    use edm::model::path::TargetPath;
-    use edm::model::{NamedElementRef, NamedTypeId, TypeRef};
+    use odata_edm::model::path::TargetPath;
+    use odata_edm::model::{NamedElementRef, NamedTypeId, TypeRef};
 
     let path = TargetPath::parse("Sales.Country").unwrap();
     let country = match model.resolve_path(&path).unwrap() {

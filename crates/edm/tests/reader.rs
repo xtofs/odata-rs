@@ -1,4 +1,4 @@
-//! Data-driven tests for [`edm::reader::CsdlReader`].
+//! Data-driven tests for [`odata_edm::reader::CsdlReader`].
 //!
 //! Each `reader_case!` invocation expands to a `#[test]` so failures are
 //! reported per-case in `cargo test` output. Add new edge cases by adding
@@ -15,7 +15,7 @@
 
 use std::io::BufRead;
 
-use edm::reader::{CsdlReader, CsdlToken};
+use odata_edm::reader::{CsdlReader, CsdlToken};
 
 fn fmt_token(t: CsdlToken<'_>) -> String {
     match t {

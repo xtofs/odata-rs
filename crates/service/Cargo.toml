@@ -1,0 +1,10 @@
+[package]
+name = "odata-rs-service"
+version.workspace = true
+edition = "2024"
+
+[lib]
+name = "odata_service"
+
+[dependencies]
+odata_url = { package = "odata-rs-url", path = "../url" }

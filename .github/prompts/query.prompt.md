@@ -12,10 +12,10 @@ on a macro level we need to think about the project structure. I am proposing
 ```
 odata-rs/            # public crate
 crates/
-  edm/               # crate name: odata-edm     EDM model and CSDL parsing; migrate the existing EDM crate here with git mv
-  url/               # crate name: odata-url     URL parsing for consumption by HTTP actions
-  serde/             # crate name: odata-serde   payload serialization now; deserialization is out of scope for this iteration
-  service/           # crate name: odata-service additional glue for service implementations
+  edm/               # crate name: odata-rs-edm     EDM model and CSDL parsing; migrate the existing EDM crate here with git mv
+  url/               # crate name: odata-rs-url     URL parsing for consumption by HTTP actions
+  serde/             # crate name: odata-rs-serde   payload serialization now; deserialization is out of scope for this iteration
+  service/           # crate name: odata-rs-service additional glue for service implementations
 ```
 
 this gives us
@@ -24,7 +24,7 @@ this gives us
 • Freedom to publish them later without renaming
 • A single public API surface (odata-rs)
 
-Dependency direction must stay explicit: `odata-edm` has no internal deps; `odata-url` depends only on `url`; `odata-serde` depends on `odata-edm`; `odata-service` depends on `odata-edm`, `odata-url`, and `odata-serde`; `odata-rs` re-exports the public API surface and contains no domain logic.
+Dependency direction must stay explicit: `odata-rs-edm` has no internal deps; `odata-rs-url` depends only on `url`; `odata-rs-serde` depends on `odata-rs-edm`; `odata-rs-service` depends on `odata-rs-edm`, `odata-rs-url`, and `odata-rs-serde`; `odata-rs` re-exports the public API surface and contains no domain logic.
 
 The `odata-rs` crate must re-export the public API from the internal crates so existing consumers can adopt the workspace layout without breaking their import paths.
 
