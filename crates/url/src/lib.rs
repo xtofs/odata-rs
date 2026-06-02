@@ -2,6 +2,13 @@ use std::{collections::BTreeMap, fmt::Debug};
 
 use url::Url;
 
+/// Compatibility query-options payload used by the service crate while URL
+/// parsing integration is being completed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct QueryOptions {
+    pub raw_query: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Parsed OData request data produced from a URL.
 ///

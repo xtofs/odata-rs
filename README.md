@@ -13,3 +13,7 @@ cargo run -p odata-rs-url --example parse_urls
 ```sh
 cargo run -p odata-rs-edm --example csdl_to_model
 ```
+
+```sh
+cargo run -p odata-rs-service --example rooms
+```

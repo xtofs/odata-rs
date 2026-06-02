@@ -7,4 +7,11 @@ edition = "2024"
 name = "odata_service"
 
 [dependencies]
+axum = "0.8.9"
+odata_edm = { package = "odata-rs-edm", path = "../edm" }
 odata_url = { package = "odata-rs-url", path = "../url" }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+tower = { version = "0.5", features = ["util"] }

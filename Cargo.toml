@@ -2,6 +2,11 @@
 name = "odata-rs"
 version = "0.0.1"
 edition = "2024"
+description = "OData protocol implementation for Rust"
+license = "MIT OR Apache-2.0"
+homepage = "https://github.com/odata-rs/odata-rs"
+repository = "https://github.com/odata-rs/odata-rs"
+
 
 [workspace]
 members = ["crates/edm", "crates/url", "crates/service"]
