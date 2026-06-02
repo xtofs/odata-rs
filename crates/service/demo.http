@@ -11,11 +11,6 @@ GET http://localhost:3000/Rooms/oak-204
 GET http://localhost:3000/Rooms/oak-204/Printers
 
 
-
-###
-GET http://localhost:3000/Rooms/redw-1002/Printers
-
-
 ###
 GET http://localhost:3000/Rooms/redw-1002/Printers/prn1002-100
 
