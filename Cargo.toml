@@ -27,3 +27,21 @@ full = ["edm", "url", "service"]
 odata_edm = { package = "odata-rs-edm", path = "crates/edm", optional = true }
 odata_url = { package = "odata-rs-url", path = "crates/url", optional = true }
 odata_service = { package = "odata-rs-service", path = "crates/service", optional = true }
+
+# Examples at the workspace root use these. Cargo always provides
+# dev-dependencies to examples, so no `required-features` is needed.
+[dev-dependencies]
+odata_edm = { package = "odata-rs-edm", path = "crates/edm" }
+odata_service = { package = "odata-rs-service", path = "crates/service", features = ["sqlx-sqlite"] }
+axum = "0.8.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[[example]]
+name = "rooms"
+path = "examples/rooms/main.rs"

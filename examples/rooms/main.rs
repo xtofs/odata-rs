@@ -277,7 +277,7 @@ fn rooms_csdl_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/rooms/rooms.csdl.xml")
 }
 
-fn build_schema() -> odata_edm::Result<Schema> {
+fn load_schema() -> odata_edm::Result<Schema> {
     let path = rooms_csdl_path();
     let csdl = fs::read_to_string(&path).map_err(|error| {
         odata_edm::Error::Csdl(format!(
@@ -305,7 +305,7 @@ async fn main() {
         )
         .init();
 
-    let schema = build_schema().expect("cannot parse rooms.csdl.xml into a service schema");
+    let schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
     let pool: AppState = Arc::new(init_db().await);
 
     let app = ODataServiceBuilder::new(schema)
