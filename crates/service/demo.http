@@ -1,21 +1,43 @@
 
-###
-GET http://localhost:3000/Rooms
-
+@baseUrl = http://localhost:3000
 
 ###
-GET http://localhost:3000/Rooms/oak-204
+GET {{baseUrl}}/Rooms
 
 
 ###
-GET http://localhost:3000/Rooms/oak-204/Printers
+GET {{baseUrl}}/Rooms?$skip=2
 
 
 ###
-GET http://localhost:3000/Rooms/redw-1002/Printers/prn1002-100
+GET {{baseUrl}}/Rooms/oak-204
+
+
+###
+GET {{baseUrl}}/Rooms/oak-204/Printers
+
+
+###
+GET {{baseUrl}}/Rooms/redw-1002/Printers/prn1002-100
 
 
 
 ###
-GET http://localhost:3000/Rooms/nowhere
+GET {{baseUrl}}/Rooms/nowhere
+
+
+
+###
+POST {{baseUrl}}/Rooms
+Content-Type: application/json
+
+{
+  "id": "stda-204",
+  "name": "Studio A 204"
+}
+
+
+###
+GET {{baseUrl}}/Rooms/stda-204
+w
 

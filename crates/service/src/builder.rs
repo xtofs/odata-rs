@@ -1,10 +1,25 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{Router, extract::Path, http::StatusCode, response::IntoResponse, routing::get};
+use axum::{
+    Json, Router,
+    extract::{Path, RawQuery},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::get,
+};
+use serde_json::Value as JsonValue;
 
 use odata_edm::Schema;
 use odata_url::QueryOptions;
+
+fn parse_query(raw: Option<String>) -> QueryOptions {
+    QueryOptions::parse(raw.as_deref().unwrap_or("")).unwrap_or_default()
+}
+
+fn body_of(body: Option<Json<JsonValue>>) -> Option<JsonValue> {
+    body.map(|Json(v)| v)
+}
 
 use super::config::{ContainedNavConfig, EntitySetConfig};
 use super::context::{
@@ -172,7 +187,7 @@ impl ODataServiceBuilder {
                     get({
                         let list = list.clone();
                         let es = es.clone();
-                        move || {
+                        move |RawQuery(q): RawQuery| {
                             let list = list.clone();
                             let es = es.clone();
                             async move {
@@ -180,7 +195,8 @@ impl ODataServiceBuilder {
                                     list,
                                     CollectionContext {
                                         entity_set: es,
-                                        query: QueryOptions::default(),
+                                        query: parse_query(q),
+                                        body: None,
                                     },
                                 )
                                 .await
@@ -189,7 +205,7 @@ impl ODataServiceBuilder {
                     })
                     .post({
                         let es = es.clone();
-                        move || {
+                        move |RawQuery(q): RawQuery, body: Option<Json<JsonValue>>| {
                             let create = create.clone();
                             let es = es.clone();
                             async move {
@@ -197,7 +213,8 @@ impl ODataServiceBuilder {
                                     create,
                                     CollectionContext {
                                         entity_set: es,
-                                        query: QueryOptions::default(),
+                                        query: parse_query(q),
+                                        body: body_of(body),
                                     },
                                 )
                                 .await
@@ -221,7 +238,7 @@ impl ODataServiceBuilder {
                     get({
                         let get_h = get_h.clone();
                         let es = es.clone();
-                        move |Path(id): Path<String>| {
+                        move |Path(id): Path<String>, RawQuery(q): RawQuery| {
                             let get_h = get_h.clone();
                             let es = es.clone();
                             async move {
@@ -230,7 +247,8 @@ impl ODataServiceBuilder {
                                     EntityContext {
                                         entity_set: es,
                                         key: id,
-                                        query: QueryOptions::default(),
+                                        query: parse_query(q),
+                                        body: None,
                                     },
                                 )
                                 .await
@@ -239,7 +257,9 @@ impl ODataServiceBuilder {
                     })
                     .patch({
                         let es = es.clone();
-                        move |Path(id): Path<String>| {
+                        move |Path(id): Path<String>,
+                              RawQuery(q): RawQuery,
+                              body: Option<Json<JsonValue>>| {
                             let update = update.clone();
                             let es = es.clone();
                             async move {
@@ -248,7 +268,8 @@ impl ODataServiceBuilder {
                                     EntityContext {
                                         entity_set: es,
                                         key: id,
-                                        query: QueryOptions::default(),
+                                        query: parse_query(q),
+                                        body: body_of(body),
                                     },
                                 )
                                 .await
@@ -257,7 +278,7 @@ impl ODataServiceBuilder {
                     })
                     .delete({
                         let es = es.clone();
-                        move |Path(id): Path<String>| {
+                        move |Path(id): Path<String>, RawQuery(q): RawQuery| {
                             let delete_h = delete_h.clone();
                             let es = es.clone();
                             async move {
@@ -266,7 +287,8 @@ impl ODataServiceBuilder {
                                     EntityContext {
                                         entity_set: es,
                                         key: id,
-                                        query: QueryOptions::default(),
+                                        query: parse_query(q),
+                                        body: None,
                                     },
                                 )
                                 .await
@@ -298,7 +320,7 @@ impl ODataServiceBuilder {
                                 let list = list.clone();
                                 let esn = esn.clone();
                                 let nav = nav.clone();
-                                move |Path(id): Path<String>| {
+                                move |Path(id): Path<String>, RawQuery(q): RawQuery| {
                                     let list = list.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
@@ -309,7 +331,8 @@ impl ODataServiceBuilder {
                                                 entity_set: esn,
                                                 parent_key: id,
                                                 nav_prop: nav,
-                                                query: QueryOptions::default(),
+                                                query: parse_query(q),
+                                                body: None,
                                             },
                                         )
                                         .await
@@ -319,7 +342,9 @@ impl ODataServiceBuilder {
                             .post({
                                 let esn = esn.clone();
                                 let nav = nav.clone();
-                                move |Path(id): Path<String>| {
+                                move |Path(id): Path<String>,
+                                      RawQuery(q): RawQuery,
+                                      body: Option<Json<JsonValue>>| {
                                     let create = create.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
@@ -330,7 +355,8 @@ impl ODataServiceBuilder {
                                                 entity_set: esn,
                                                 parent_key: id,
                                                 nav_prop: nav,
-                                                query: QueryOptions::default(),
+                                                query: parse_query(q),
+                                                body: body_of(body),
                                             },
                                         )
                                         .await
@@ -354,7 +380,8 @@ impl ODataServiceBuilder {
                                 let get_h = get_h.clone();
                                 let esn = esn.clone();
                                 let nav = nav.clone();
-                                move |Path((id, nav_id)): Path<(String, String)>| {
+                                move |Path((id, nav_id)): Path<(String, String)>,
+                                      RawQuery(q): RawQuery| {
                                     let get_h = get_h.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
@@ -366,7 +393,8 @@ impl ODataServiceBuilder {
                                                 parent_key: id,
                                                 nav_prop: nav,
                                                 key: nav_id,
-                                                query: QueryOptions::default(),
+                                                query: parse_query(q),
+                                                body: None,
                                             },
                                         )
                                         .await
@@ -376,7 +404,9 @@ impl ODataServiceBuilder {
                             .patch({
                                 let esn = esn.clone();
                                 let nav = nav.clone();
-                                move |Path((id, nav_id)): Path<(String, String)>| {
+                                move |Path((id, nav_id)): Path<(String, String)>,
+                                      RawQuery(q): RawQuery,
+                                      body: Option<Json<JsonValue>>| {
                                     let update = update.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
@@ -388,7 +418,8 @@ impl ODataServiceBuilder {
                                                 parent_key: id,
                                                 nav_prop: nav,
                                                 key: nav_id,
-                                                query: QueryOptions::default(),
+                                                query: parse_query(q),
+                                                body: body_of(body),
                                             },
                                         )
                                         .await
@@ -398,7 +429,8 @@ impl ODataServiceBuilder {
                             .delete({
                                 let esn = esn.clone();
                                 let nav = nav.clone();
-                                move |Path((id, nav_id)): Path<(String, String)>| {
+                                move |Path((id, nav_id)): Path<(String, String)>,
+                                      RawQuery(q): RawQuery| {
                                     let delete_h = delete_h.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
@@ -410,7 +442,8 @@ impl ODataServiceBuilder {
                                                 parent_key: id,
                                                 nav_prop: nav,
                                                 key: nav_id,
-                                                query: QueryOptions::default(),
+                                                query: parse_query(q),
+                                                body: None,
                                             },
                                         )
                                         .await

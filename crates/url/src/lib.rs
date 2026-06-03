@@ -2,11 +2,47 @@ use std::{collections::BTreeMap, fmt::Debug};
 
 use url::Url;
 
-/// Compatibility query-options payload used by the service crate while URL
-/// parsing integration is being completed.
+/// System query options extracted from an OData request URL.
+///
+/// This is the subset of [`ODataQuery`] that a request handler actually needs:
+/// it omits the resource path, full URL, and path markers (which are already
+/// implied by the route a handler is bound to).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QueryOptions {
-    pub raw_query: Option<String>,
+    pub select: Option<SelectClause>,
+    pub filter: Option<FilterClause>,
+    pub expand: Option<ExpandClause>,
+    pub top: Option<u64>,
+    pub skip: Option<u64>,
+    pub orderby: Option<OrderByClause>,
+    pub count: Option<bool>,
+    pub custom: BTreeMap<String, Vec<String>>,
+}
+
+impl QueryOptions {
+    /// Parse the `?...` part of an OData URL (without the leading `?`).
+    ///
+    /// An empty string yields `QueryOptions::default()`.
+    pub fn parse(query: &str) -> Result<Self, ParseError> {
+        let pairs = url::form_urlencoded::parse(query.as_bytes())
+            .map(|(k, v)| (k.into_owned(), v.into_owned()));
+        parse_query_options(pairs)
+    }
+}
+
+impl From<ODataQuery> for QueryOptions {
+    fn from(q: ODataQuery) -> Self {
+        Self {
+            select: q.select,
+            filter: q.filter,
+            expand: q.expand,
+            top: q.top,
+            skip: q.skip,
+            orderby: q.orderby,
+            count: q.inlinecount,
+            custom: q.custom,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,99 +207,100 @@ impl ODataQuery {
     pub fn from_url(url: Url) -> Result<Self, ParseError> {
         let (resource_path, each, count, r#ref, value) = parse_resource_path(&url);
 
-        let mut select: Option<SelectClause> = None;
-        let mut filter: Option<FilterClause> = None;
-        let mut expand: Option<ExpandClause> = None;
-        let mut top: Option<u64> = None;
-        let mut skip: Option<u64> = None;
-        let mut orderby: Option<OrderByClause> = None;
-        let mut inlinecount: Option<bool> = None;
-        let mut custom: BTreeMap<String, Vec<String>> = BTreeMap::new();
-
-        for (name, value) in url.query_pairs() {
-            let option_name = normalize_query_option_name(&name);
-            let option_value = value.into_owned();
-
-            match option_name {
-                "select" => {
-                    assign_once(&mut select, "select", SelectClause::parse(&option_value)?)?;
-                }
-                "filter" => {
-                    assign_once(&mut filter, "filter", FilterClause::parse(&option_value)?)?;
-                }
-                "expand" => {
-                    assign_once(&mut expand, "expand", ExpandClause::parse(&option_value)?)?;
-                }
-                "top" => {
-                    assign_once(
-                        &mut top,
-                        "top",
-                        option_value
-                            .parse::<u64>()
-                            .map_err(|_| ParseError::InvalidInteger {
-                                option: "top".to_string(),
-                                value: option_value.clone(),
-                            })?,
-                    )?;
-                }
-                "skip" => {
-                    assign_once(
-                        &mut skip,
-                        "skip",
-                        option_value
-                            .parse::<u64>()
-                            .map_err(|_| ParseError::InvalidInteger {
-                                option: "skip".to_string(),
-                                value: option_value.clone(),
-                            })?,
-                    )?;
-                }
-                "orderby" => {
-                    assign_once(
-                        &mut orderby,
-                        "orderby",
-                        OrderByClause {
-                            expression: option_value,
-                        },
-                    )?;
-                }
-                "count" => {
-                    assign_once(
-                        &mut inlinecount,
-                        "inlinecount",
-                        parse_boolean(&option_value).ok_or_else(|| ParseError::InvalidBoolean {
-                            option: "inlinecount".to_string(),
-                            value: option_value.clone(),
-                        })?,
-                    )?;
-                }
-                _ => {
-                    custom
-                        .entry(name.into_owned())
-                        .or_default()
-                        .push(option_value);
-                }
-            }
-        }
+        let pairs = url
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()));
+        let options = parse_query_options(pairs)?;
 
         Ok(Self {
             each,
-            custom,
+            custom: options.custom,
             count,
-            expand,
-            filter,
+            expand: options.expand,
+            filter: options.filter,
             fragment: url.fragment().map(ToOwned::to_owned),
-            inlinecount,
-            orderby,
+            inlinecount: options.count,
+            orderby: options.orderby,
             resource_path,
             r#ref,
-            select,
-            skip,
-            top,
+            select: options.select,
+            skip: options.skip,
+            top: options.top,
             value,
             url,
         })
     }
+}
+
+fn parse_query_options<I>(pairs: I) -> Result<QueryOptions, ParseError>
+where
+    I: IntoIterator<Item = (String, String)>,
+{
+    let mut out = QueryOptions::default();
+
+    for (name, option_value) in pairs {
+        let option_name = normalize_query_option_name(&name);
+
+        match option_name {
+            "select" => {
+                assign_once(&mut out.select, "select", SelectClause::parse(&option_value)?)?;
+            }
+            "filter" => {
+                assign_once(&mut out.filter, "filter", FilterClause::parse(&option_value)?)?;
+            }
+            "expand" => {
+                assign_once(&mut out.expand, "expand", ExpandClause::parse(&option_value)?)?;
+            }
+            "top" => {
+                assign_once(
+                    &mut out.top,
+                    "top",
+                    option_value
+                        .parse::<u64>()
+                        .map_err(|_| ParseError::InvalidInteger {
+                            option: "top".to_string(),
+                            value: option_value.clone(),
+                        })?,
+                )?;
+            }
+            "skip" => {
+                assign_once(
+                    &mut out.skip,
+                    "skip",
+                    option_value
+                        .parse::<u64>()
+                        .map_err(|_| ParseError::InvalidInteger {
+                            option: "skip".to_string(),
+                            value: option_value.clone(),
+                        })?,
+                )?;
+            }
+            "orderby" => {
+                assign_once(
+                    &mut out.orderby,
+                    "orderby",
+                    OrderByClause {
+                        expression: option_value,
+                    },
+                )?;
+            }
+            "count" => {
+                assign_once(
+                    &mut out.count,
+                    "inlinecount",
+                    parse_boolean(&option_value).ok_or_else(|| ParseError::InvalidBoolean {
+                        option: "inlinecount".to_string(),
+                        value: option_value.clone(),
+                    })?,
+                )?;
+            }
+            _ => {
+                out.custom.entry(name).or_default().push(option_value);
+            }
+        }
+    }
+
+    Ok(out)
 }
 
 impl SelectClause {

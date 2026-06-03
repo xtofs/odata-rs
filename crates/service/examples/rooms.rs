@@ -1,107 +1,297 @@
-use axum::Json;
-use axum::http::StatusCode;
-/// Example: a building-management OData service.
-///
-/// Schema
-///   EntityType  Room       { nav: Printers (contained) }
-///   EntityType  Printer
-///   EntitySet   Rooms      → Room
-///
-/// Registered:  Rooms/list, Rooms/get, Rooms/Printers/list, Rooms/Printers/get
-/// Not registered (501):  Rooms/create, update, delete
-///                        Rooms/Printers/create, update, delete
-use axum::response::IntoResponse;
+//! Example: a building-management OData service backed by an in-memory
+//! SQLite database (via `sqlx`).
+//!
+//! Schema
+//!   EntityType  Room       { nav: Printers (contained) }
+//!   EntityType  Printer
+//!   EntitySet   Rooms      → Room
+//!
+//! Registered:
+//!   - Rooms          GET list, GET get, POST create, DELETE
+//!   - Rooms/Printers GET list, GET get, POST create, DELETE
+//!
+//! The `list` handlers honor the OData system query options that map cleanly
+//! to SQL today: `$top`, `$skip`, and `$orderby` (allowlisted columns).
+//! `$filter`, `$select`, `$expand`, and `$count` are received but ignored —
+//! wiring those is a separate translation step.
+
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
+
+use axum::Json;
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use serde::{Deserialize, Serialize};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::{FromRow, SqlitePool};
 
 use odata_edm::Schema;
+use odata_url::{OrderByClause, QueryOptions};
 use odata_service::{
     CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
     ODataServiceBuilder,
 };
 
 // ---------------------------------------------------------------------------
-// Domain types and static fixture data used by this example
+// Shared database pool
+// ---------------------------------------------------------------------------
+//
+// Handlers in this version of the framework receive only their context — no
+// app-state injection — so we share the pool through a process-global
+// `OnceLock`. Good enough for an example.
+
+static DB: OnceLock<SqlitePool> = OnceLock::new();
+
+fn db() -> &'static SqlitePool {
+    DB.get().expect("database pool not initialized")
+}
+
+// ---------------------------------------------------------------------------
+// Domain types
 // ---------------------------------------------------------------------------
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Room {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub printers: &'static [Printer],
+    pub id: String,
+    pub name: String,
 }
 
-#[derive(serde::Serialize)]
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Printer {
-    pub id: &'static str,
-    pub model: &'static str,
+    pub id: String,
+    pub model: String,
+    #[serde(skip)]
+    #[sqlx(default)]
+    pub room_id: String,
 }
 
-static REDW_PRINTERS_ARR: [Printer; 2] = [
-    Printer {
-        id: "prn1002-100",
-        model: "HP LaserJet",
-    },
-    Printer {
-        id: "prn1002-200",
-        model: "Canon ImageRunner",
-    },
-];
-
-pub static REDW_PRINTERS: &[Printer] = &REDW_PRINTERS_ARR;
-
-static OAK_PRINTERS_ARR: [Printer; 1] = [Printer {
-    id: "prn0204-100",
-    model: "Brother HL-L6400",
-}];
-
-pub static OAK_PRINTERS: &[Printer] = &OAK_PRINTERS_ARR;
-
-static ROOM_DATA_ARR: [Room; 2] = [
-    Room {
-        id: "redw-1002",
-        name: "Redwood 1002",
-        printers: REDW_PRINTERS,
-    },
-    Room {
-        id: "oak-204",
-        name: "Oak 204",
-        printers: OAK_PRINTERS,
-    },
-];
-
-pub static ROOM_DATA: &[Room] = &ROOM_DATA_ARR;
-
 // ---------------------------------------------------------------------------
-// Handlers — plain async functions, no axum imports required
+// Query-option helpers
 // ---------------------------------------------------------------------------
 
-async fn list_rooms(_ctx: CollectionContext) -> impl IntoResponse {
-    Json(ROOM_DATA)
-}
-
-async fn get_room(ctx: EntityContext) -> impl IntoResponse {
-    match ROOM_DATA.iter().find(|r| r.id == ctx.key) {
-        Some(room) => Json(room).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
+/// Translate `$orderby` into a safe SQL `ORDER BY` clause by allowlisting
+/// columns. Returns an empty string if the option is absent or invalid.
+fn order_by_sql(orderby: Option<&OrderByClause>, allowed: &[&str]) -> String {
+    let Some(clause) = orderby else {
+        return String::new();
+    };
+    let mut parts = Vec::new();
+    for item in clause.expression.split(',') {
+        let mut it = item.trim().split_whitespace();
+        let Some(col) = it.next() else { continue };
+        if !allowed.contains(&col) {
+            continue;
+        }
+        let dir = match it.next().map(str::to_ascii_lowercase).as_deref() {
+            Some("desc") => "DESC",
+            _ => "ASC",
+        };
+        parts.push(format!("{col} {dir}"));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" ORDER BY {}", parts.join(", "))
     }
 }
 
+fn top_skip_sql(q: &QueryOptions) -> String {
+    // SQLite requires LIMIT when OFFSET is present.
+    let limit = q.top.map(|n| n as i64).unwrap_or(-1);
+    let offset = q.skip.unwrap_or(0) as i64;
+    format!(" LIMIT {limit} OFFSET {offset}")
+}
+
+// ---------------------------------------------------------------------------
+// Room handlers
+// ---------------------------------------------------------------------------
+
+async fn list_rooms(ctx: CollectionContext) -> impl IntoResponse {
+    let sql = format!(
+        "SELECT id, name FROM rooms{}{}",
+        order_by_sql(ctx.query.orderby.as_ref(), &["id", "name"]),
+        top_skip_sql(&ctx.query),
+    );
+    match sqlx::query_as::<_, Room>(&sql).fetch_all(db()).await {
+        Ok(rooms) => Json(rooms).into_response(),
+        Err(e) => server_error(e),
+    }
+}
+
+async fn get_room(ctx: EntityContext) -> impl IntoResponse {
+    match sqlx::query_as::<_, Room>("SELECT id, name FROM rooms WHERE id = ?")
+        .bind(&ctx.key)
+        .fetch_optional(db())
+        .await
+    {
+        Ok(Some(room)) => Json(room).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => server_error(e),
+    }
+}
+
+async fn create_room(ctx: CollectionContext) -> impl IntoResponse {
+    let Some(body) = ctx.body else {
+        return (StatusCode::BAD_REQUEST, "expected JSON body").into_response();
+    };
+    let Ok(room) = serde_json::from_value::<Room>(body) else {
+        return (StatusCode::BAD_REQUEST, "invalid Room payload").into_response();
+    };
+    match sqlx::query("INSERT INTO rooms (id, name) VALUES (?, ?)")
+        .bind(&room.id)
+        .bind(&room.name)
+        .execute(db())
+        .await
+    {
+        Ok(_) => (StatusCode::CREATED, Json(room)).into_response(),
+        Err(e) => server_error(e),
+    }
+}
+
+async fn delete_room(ctx: EntityContext) -> impl IntoResponse {
+    match sqlx::query("DELETE FROM rooms WHERE id = ?")
+        .bind(&ctx.key)
+        .execute(db())
+        .await
+    {
+        Ok(r) if r.rows_affected() == 0 => StatusCode::NOT_FOUND.into_response(),
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => server_error(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Printer (contained) handlers
+// ---------------------------------------------------------------------------
+
 async fn list_printers(ctx: ContainedCollectionContext) -> impl IntoResponse {
-    match ROOM_DATA.iter().find(|r| r.id == ctx.parent_key) {
-        Some(room) => Json(room.printers).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
+    let sql = format!(
+        "SELECT id, model, room_id FROM printers WHERE room_id = ?{}{}",
+        order_by_sql(ctx.query.orderby.as_ref(), &["id", "model"]),
+        top_skip_sql(&ctx.query),
+    );
+    match sqlx::query_as::<_, Printer>(&sql)
+        .bind(&ctx.parent_key)
+        .fetch_all(db())
+        .await
+    {
+        Ok(printers) => Json(printers).into_response(),
+        Err(e) => server_error(e),
     }
 }
 
 async fn get_printer(ctx: ContainedEntityContext) -> impl IntoResponse {
-    match ROOM_DATA.iter().find(|r| r.id == ctx.parent_key) {
-        Some(room) => match room.printers.iter().find(|p| p.id == ctx.key) {
-            Some(printer) => Json(printer).into_response(),
-            None => StatusCode::NOT_FOUND.into_response(),
-        },
-        None => StatusCode::NOT_FOUND.into_response(),
+    match sqlx::query_as::<_, Printer>(
+        "SELECT id, model, room_id FROM printers WHERE room_id = ? AND id = ?",
+    )
+    .bind(&ctx.parent_key)
+    .bind(&ctx.key)
+    .fetch_optional(db())
+    .await
+    {
+        Ok(Some(printer)) => Json(printer).into_response(),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(e) => server_error(e),
     }
+}
+
+async fn create_printer(ctx: ContainedCollectionContext) -> impl IntoResponse {
+    let Some(body) = ctx.body else {
+        return (StatusCode::BAD_REQUEST, "expected JSON body").into_response();
+    };
+    let Ok(printer) = serde_json::from_value::<Printer>(body) else {
+        return (StatusCode::BAD_REQUEST, "invalid Printer payload").into_response();
+    };
+    match sqlx::query("INSERT INTO printers (id, room_id, model) VALUES (?, ?, ?)")
+        .bind(&printer.id)
+        .bind(&ctx.parent_key)
+        .bind(&printer.model)
+        .execute(db())
+        .await
+    {
+        Ok(_) => (StatusCode::CREATED, Json(printer)).into_response(),
+        Err(e) => server_error(e),
+    }
+}
+
+async fn delete_printer(ctx: ContainedEntityContext) -> impl IntoResponse {
+    match sqlx::query("DELETE FROM printers WHERE room_id = ? AND id = ?")
+        .bind(&ctx.parent_key)
+        .bind(&ctx.key)
+        .execute(db())
+        .await
+    {
+        Ok(r) if r.rows_affected() == 0 => StatusCode::NOT_FOUND.into_response(),
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => server_error(e),
+    }
+}
+
+fn server_error(err: sqlx::Error) -> axum::response::Response {
+    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+}
+
+// ---------------------------------------------------------------------------
+// Database setup
+// ---------------------------------------------------------------------------
+
+async fn init_db() -> SqlitePool {
+    // `:memory:` databases are private to each connection. To share one
+    // in-memory DB across the pool we use a named, shared-cache URI and keep
+    // one connection alive so the DB isn't dropped between requests.
+    let opts: SqliteConnectOptions = "sqlite:file:odata_rooms?mode=memory&cache=shared"
+        .parse()
+        .expect("invalid sqlite connect string");
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(4)
+        .min_connections(1)
+        .connect_with(opts)
+        .await
+        .expect("failed to open in-memory sqlite");
+
+    sqlx::query(
+        r#"
+        CREATE TABLE rooms (
+            id   TEXT PRIMARY KEY,
+            name TEXT NOT NULL
+        );
+        CREATE TABLE printers (
+            id      TEXT NOT NULL,
+            room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+            model   TEXT NOT NULL,
+            PRIMARY KEY (room_id, id)
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("failed to create schema");
+
+    for (id, name) in [("redw-1002", "Redwood 1002"), ("oak-204", "Oak 204")] {
+        sqlx::query("INSERT INTO rooms (id, name) VALUES (?, ?)")
+            .bind(id)
+            .bind(name)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    for (id, room, model) in [
+        ("prn1002-100", "redw-1002", "HP LaserJet"),
+        ("prn1002-200", "redw-1002", "Canon ImageRunner"),
+        ("prn0204-100", "oak-204", "Brother HL-L6400"),
+    ] {
+        sqlx::query("INSERT INTO printers (id, room_id, model) VALUES (?, ?, ?)")
+            .bind(id)
+            .bind(room)
+            .bind(model)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    pool
 }
 
 // ---------------------------------------------------------------------------
@@ -130,18 +320,20 @@ fn build_schema() -> odata_edm::Result<Schema> {
 
 #[tokio::main]
 async fn main() {
-    let schema = build_schema().expect("rooms.csdl.xml should parse into a service schema");
+    let schema = build_schema().expect("cannot parse rooms.csdl.xml into a service schema");
+    DB.set(init_db().await).ok().expect("DB already initialized");
 
-    // Build the router. The library will:
-    //   • warn for unregistered ops (create/update/delete on both levels)
-    //   • wire 501 for those gaps automatically
     let app = ODataServiceBuilder::new(schema)
         .entity_set("Rooms", |es| {
             es.list(list_rooms)
                 .get(get_room)
+                .create(create_room)
+                .delete(delete_room)
                 .contained("Printers", |nav| {
-                    nav.list(list_printers) // list printers in room
-                        .get(get_printer) // get a specific printer in the room
+                    nav.list(list_printers)
+                        .get(get_printer)
+                        .create(create_printer)
+                        .delete(delete_printer)
                 })
         })
         .build();
