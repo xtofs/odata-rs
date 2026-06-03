@@ -32,10 +32,14 @@ use odata_service::{
     ODataServiceBuilder,
 };
 
-// `Allowed` is re-exported from `odata_service::oquery` for handlers that want
-// to pass `Allowed::All`. The example sticks to slice literals, which auto-
-// convert to `Allowed::Only` via the `From` impl.
-use odata_service::oquery::{Allowed, OQuery, OQueryDynamic, project};
+// The example uses the `*CtxQuery` extension traits to skip the boilerplate
+// of applying `$select`/`$orderby`/`$top`/`$skip` and any parent/key
+// `where_eq` clauses by hand — bringing the traits into scope makes
+// `ctx.oquery(...)` / `ctx.oquery_dynamic(...)` available on each context.
+use odata_service::oquery::{
+    CollectionCtxQuery, ContainedCollectionCtxQuery, ContainedEntityCtxQuery, EntityCtxQuery,
+    project,
+};
 
 // ---------------------------------------------------------------------------
 // App state
@@ -77,13 +81,9 @@ pub struct Printer {
 // §"Row representation: typed vs dynamic".
 
 async fn list_rooms(ctx: CollectionContext, pool: AppState) -> impl IntoResponse {
-    let query = OQuery::<Room>::from("rooms")
-        .select(ctx.query.select.as_ref(), Allowed::All)
-        .orderby(ctx.query.orderby.as_ref(), &["id", "name"])
-        .page(&ctx.query.page);
-
-    match query.fetch_all(&pool).await {
-        Ok(rooms) => match project(rooms, ctx.query.select.as_ref()) {
+    let select = ctx.query.select.clone();
+    match ctx.oquery::<Room>("rooms").fetch_all(&pool).await {
+        Ok(rooms) => match project(rooms, select.as_ref()) {
             Ok(v) => Json(v).into_response(),
             Err(e) => server_error_msg(e.to_string()),
         },
@@ -92,12 +92,13 @@ async fn list_rooms(ctx: CollectionContext, pool: AppState) -> impl IntoResponse
 }
 
 async fn get_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
-    let query = OQuery::<Room>::from("rooms")
-        .select(ctx.query.select.as_ref(), Allowed::All)
-        .where_eq("id", ctx.key);
-
-    match query.fetch_optional(&pool).await {
-        Ok(Some(room)) => match project(room, ctx.query.select.as_ref()) {
+    let select = ctx.query.select.clone();
+    match ctx
+        .oquery::<Room>("rooms", "id")
+        .fetch_optional(&pool)
+        .await
+    {
+        Ok(Some(room)) => match project(room, select.as_ref()) {
             Ok(v) => Json(v).into_response(),
             Err(e) => server_error_msg(e.to_string()),
         },
@@ -144,26 +145,24 @@ async fn delete_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
 // `$select` can drive the SQL projection directly and no response-side
 // `project` is needed. Contrast with `list_rooms`.
 async fn list_printers(ctx: ContainedCollectionContext, pool: AppState) -> impl IntoResponse {
-    let query = OQueryDynamic::from("printers")
-        .select(ctx.query.select.as_ref(), Allowed::All)
-        .where_eq("room_id", ctx.parent_key)
-        .orderby(ctx.query.orderby.as_ref(), &["id", "model"])
-        .page(&ctx.query.page);
-
-    match query.fetch_all(&pool).await {
+    match ctx
+        .oquery_dynamic("printers", "room_id")
+        .fetch_all(&pool)
+        .await
+    {
         Ok(rows) => Json(rows).into_response(),
         Err(e) => server_error(e),
     }
 }
 
 async fn get_printer(ctx: ContainedEntityContext, pool: AppState) -> impl IntoResponse {
-    let query = OQuery::<Printer>::from("printers")
-        .select(ctx.query.select.as_ref(), Allowed::All)
-        .where_eq("room_id", ctx.parent_key)
-        .where_eq("id", ctx.key);
-
-    match query.fetch_optional(&pool).await {
-        Ok(Some(printer)) => match project(printer, ctx.query.select.as_ref()) {
+    let select = ctx.query.select.clone();
+    match ctx
+        .oquery::<Printer>("printers", "room_id", "id")
+        .fetch_optional(&pool)
+        .await
+    {
+        Ok(Some(printer)) => match project(printer, select.as_ref()) {
             Ok(v) => Json(v).into_response(),
             Err(e) => server_error_msg(e.to_string()),
         },
@@ -282,7 +281,7 @@ fn rooms_csdl_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/rooms/rooms.csdl.xml")
 }
 
-fn build_schema() -> odata_edm::Result<Schema> {
+fn load_schema() -> odata_edm::Result<Schema> {
     let path = rooms_csdl_path();
     let csdl = fs::read_to_string(&path).map_err(|error| {
         odata_edm::Error::Csdl(format!(
@@ -305,12 +304,13 @@ async fn main() {
     // `RUST_LOG=tower_http=trace` to also dump request/response headers.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,tower_http=debug")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("info,tower_http=debug,sqlx::query=debug")
+            }),
         )
         .init();
 
-    let schema = build_schema().expect("cannot parse rooms.csdl.xml into a service schema");
+    let schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
     let pool: AppState = Arc::new(init_db().await);
 
     let app = ODataServiceBuilder::new(schema)
