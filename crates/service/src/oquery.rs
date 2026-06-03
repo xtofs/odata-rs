@@ -371,3 +371,35 @@ fn row_to_json_map(row: &SqliteRow) -> JsonMap<String, JsonValue> {
     }
     out
 }
+
+// ---------------------------------------------------------------------------
+// Response-side `$select` projection
+// ---------------------------------------------------------------------------
+
+/// Serialize `value` to JSON and, if `select` is `Some`, retain only the keys
+/// it names (top-level structural properties). For the typed [`OQuery<T>`]
+/// path, SQL always returns all columns of `T`, so `$select` is honored here.
+pub fn project<T: serde::Serialize>(
+    value: T,
+    select: Option<&SelectClause>,
+) -> serde_json::Result<JsonValue> {
+    let mut v = serde_json::to_value(value)?;
+    if let Some(sel) = select {
+        retain_selected(&mut v, &sel.items);
+    }
+    Ok(v)
+}
+
+fn retain_selected(value: &mut JsonValue, items: &[String]) {
+    match value {
+        JsonValue::Object(obj) => {
+            obj.retain(|k, _| items.iter().any(|s| s == k));
+        }
+        JsonValue::Array(arr) => {
+            for v in arr {
+                retain_selected(v, items);
+            }
+        }
+        _ => {}
+    }
+}

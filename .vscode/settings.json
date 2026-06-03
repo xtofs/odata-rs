@@ -4,6 +4,7 @@
         "fmtp",
         "itertools",
         "prec",
+        "redw",
         "thiserror"
     ]
 }

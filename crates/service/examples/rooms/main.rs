@@ -35,7 +35,7 @@ use odata_service::{
 // `Allowed` is re-exported from `odata_service::oquery` for handlers that want
 // to pass `Allowed::All`. The example sticks to slice literals, which auto-
 // convert to `Allowed::Only` via the `From` impl.
-use odata_service::oquery::{OQuery, OQueryDynamic};
+use odata_service::oquery::{Allowed, OQuery, OQueryDynamic, project};
 
 // ---------------------------------------------------------------------------
 // App state
@@ -69,31 +69,38 @@ pub struct Printer {
 // Room handlers
 // ---------------------------------------------------------------------------
 
-// NOTE: `$select` is currently passed as `None` because the typed row structs
-// (`Room`, `Printer`) require all columns to be present for `FromRow`.
-// Honoring `$select` end-to-end needs either `Option<T>` fields, a
-// `serde_json::Value` row type, or output-side JSON projection — a separate
-// change.
+// `$select` appears twice on the typed path: `.select(...)` on `OQuery<Room>`
+// only enforces the allowlist (SQL stays `SELECT *` since deserializing rows
+// into `Room` requires every column), and `project(...)` narrows the response
+// JSON after the fetch. Contrast with `list_printers`, where rows are JSON
+// maps and `$select` drives the SQL projection directly. See ARCHITECTURE.md
+// §"Row representation: typed vs dynamic".
 
 async fn list_rooms(ctx: CollectionContext, pool: AppState) -> impl IntoResponse {
     let query = OQuery::<Room>::from("rooms")
-        .select(None, &["id", "name"])
+        .select(ctx.query.select.as_ref(), Allowed::All)
         .orderby(ctx.query.orderby.as_ref(), &["id", "name"])
         .page(&ctx.query.page);
 
     match query.fetch_all(&pool).await {
-        Ok(rooms) => Json(rooms).into_response(),
+        Ok(rooms) => match project(rooms, ctx.query.select.as_ref()) {
+            Ok(v) => Json(v).into_response(),
+            Err(e) => server_error_msg(e.to_string()),
+        },
         Err(e) => server_error(e),
     }
 }
 
 async fn get_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
     let query = OQuery::<Room>::from("rooms")
-        .select(None, &["id", "name"])
+        .select(ctx.query.select.as_ref(), Allowed::All)
         .where_eq("id", ctx.key);
 
     match query.fetch_optional(&pool).await {
-        Ok(Some(room)) => Json(room).into_response(),
+        Ok(Some(room)) => match project(room, ctx.query.select.as_ref()) {
+            Ok(v) => Json(v).into_response(),
+            Err(e) => server_error_msg(e.to_string()),
+        },
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => server_error(e),
     }
@@ -133,11 +140,12 @@ async fn delete_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
 // Printer (contained) handlers
 // ---------------------------------------------------------------------------
 
-// Demonstrates the dynamic OQuery path: rows come back as JSON maps, and
-// `$select` shrinks the SQL projection directly.
+// Dynamic path: rows come back as JSON maps (not `Printer` structs), so
+// `$select` can drive the SQL projection directly and no response-side
+// `project` is needed. Contrast with `list_rooms`.
 async fn list_printers(ctx: ContainedCollectionContext, pool: AppState) -> impl IntoResponse {
     let query = OQueryDynamic::from("printers")
-        .select(ctx.query.select.as_ref(), &["id", "model", "room_id"])
+        .select(ctx.query.select.as_ref(), Allowed::All)
         .where_eq("room_id", ctx.parent_key)
         .orderby(ctx.query.orderby.as_ref(), &["id", "model"])
         .page(&ctx.query.page);
@@ -150,12 +158,15 @@ async fn list_printers(ctx: ContainedCollectionContext, pool: AppState) -> impl 
 
 async fn get_printer(ctx: ContainedEntityContext, pool: AppState) -> impl IntoResponse {
     let query = OQuery::<Printer>::from("printers")
-        .select(None, &["id", "model", "room_id"])
+        .select(ctx.query.select.as_ref(), Allowed::All)
         .where_eq("room_id", ctx.parent_key)
         .where_eq("id", ctx.key);
 
     match query.fetch_optional(&pool).await {
-        Ok(Some(printer)) => Json(printer).into_response(),
+        Ok(Some(printer)) => match project(printer, ctx.query.select.as_ref()) {
+            Ok(v) => Json(v).into_response(),
+            Err(e) => server_error_msg(e.to_string()),
+        },
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => server_error(e),
     }
@@ -195,6 +206,10 @@ async fn delete_printer(ctx: ContainedEntityContext, pool: AppState) -> impl Int
 
 fn server_error(err: sqlx::Error) -> axum::response::Response {
     (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response()
+}
+
+fn server_error_msg(msg: String) -> axum::response::Response {
+    (StatusCode::INTERNAL_SERVER_ERROR, msg).into_response()
 }
 
 // ---------------------------------------------------------------------------

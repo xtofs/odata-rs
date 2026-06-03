@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     extract::{Path, RawQuery},
-    http::StatusCode,
+    http::{Method, StatusCode, Uri},
     response::IntoResponse,
     routing::get,
 };
@@ -516,8 +516,22 @@ where
             }
         }
 
-        router
+        // OData resource names are case-sensitive, and a missing `s`, wrong
+        // casing, or a typo in the path otherwise produces a body-less 404
+        // from axum's default fallback. Replace it with a message that names
+        // the unmatched method + path so the client sees what went wrong.
+        router.fallback(unmatched_route)
     }
+}
+
+async fn unmatched_route(method: Method, uri: Uri) -> impl IntoResponse {
+    (
+        StatusCode::NOT_FOUND,
+        format!(
+            "no route matches {method} {path} — check resource-name casing and spelling (OData paths are case-sensitive)",
+            path = uri.path(),
+        ),
+    )
 }
 
 // ---------------------------------------------------------------------------

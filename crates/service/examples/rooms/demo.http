@@ -1,0 +1,63 @@
+
+@baseUrl = http://localhost:3000
+
+
+## ##########################
+## retrieving rooms: all, a page, projection, unknown
+
+###
+GET {{baseUrl}}/rooms
+
+###
+GET {{baseUrl}}/rooms?$top=2&$skip=1
+
+
+###
+GET {{baseUrl}}/rooms?$select=id
+
+###
+GET {{baseUrl}}/rooms/oak-204
+
+###
+GET {{baseUrl}}/rooms/nowhere
+
+
+## ##########################
+## retrieving printers: all, specific, with projection,
+
+###
+GET {{baseUrl}}/rooms/oak-204/printers
+
+###
+GET {{baseUrl}}/rooms/redw-1002/printers/prn1002-100
+
+###
+GET {{baseUrl}}/rooms/redw-1002/printers/prn1002-100?$select=id
+
+
+## ##########################
+## adding a room and checking it exists
+
+###
+POST {{baseUrl}}/rooms
+Content-Type: application/json
+
+{
+  "id": "sta-204",
+  "name": "Studio A 204"
+}
+
+###
+GET {{baseUrl}}/rooms/sta-204
+
+###
+GET {{baseUrl}}/rooms/sta-204/printers
+
+###
+POST {{baseUrl}}/rooms/sta-204/printers
+Content-Type: application/json
+
+{
+  "id": "prn0204-200",
+  "model": "Xerox 2100"
+}
