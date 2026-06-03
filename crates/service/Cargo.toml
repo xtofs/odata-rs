@@ -6,15 +6,24 @@ edition = "2024"
 [lib]
 name = "odata_service"
 
+[features]
+# Enables `odata_service::oquery` — a fluent query builder over `sqlx`
+# targeting SQLite. Opt-in so the bare service crate stays store-agnostic.
+sqlx-sqlite = ["dep:sqlx"]
+
 [dependencies]
 axum = "0.8.9"
 odata_edm = { package = "odata-rs-edm", path = "../edm" }
 odata_url = { package = "odata-rs-url", path = "../url" }
 serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros"], optional = true }
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 tower = { version = "0.5", features = ["util"] }
+
+[[example]]
+name = "rooms"
+required-features = ["sqlx-sqlite"]

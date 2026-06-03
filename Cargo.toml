@@ -20,6 +20,7 @@ default = ["full"]
 edm = ["dep:odata_edm"]
 url = ["dep:odata_url"]
 service = ["dep:odata_service"]
+sqlx-sqlite = ["service", "odata_service/sqlx-sqlite"]
 full = ["edm", "url", "service"]
 
 [dependencies]

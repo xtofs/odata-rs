@@ -27,11 +27,12 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{FromRow, SqlitePool};
 
 use odata_edm::Schema;
-use odata_url::{OrderByClause, QueryOptions};
 use odata_service::{
     CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
     ODataServiceBuilder,
 };
+
+use odata_service::oquery::OQuery;
 
 // ---------------------------------------------------------------------------
 // Shared database pool
@@ -67,64 +68,33 @@ pub struct Printer {
 }
 
 // ---------------------------------------------------------------------------
-// Query-option helpers
-// ---------------------------------------------------------------------------
-
-/// Translate `$orderby` into a safe SQL `ORDER BY` clause by allowlisting
-/// columns. Returns an empty string if the option is absent or invalid.
-fn order_by_sql(orderby: Option<&OrderByClause>, allowed: &[&str]) -> String {
-    let Some(clause) = orderby else {
-        return String::new();
-    };
-    let mut parts = Vec::new();
-    for item in clause.expression.split(',') {
-        let mut it = item.trim().split_whitespace();
-        let Some(col) = it.next() else { continue };
-        if !allowed.contains(&col) {
-            continue;
-        }
-        let dir = match it.next().map(str::to_ascii_lowercase).as_deref() {
-            Some("desc") => "DESC",
-            _ => "ASC",
-        };
-        parts.push(format!("{col} {dir}"));
-    }
-    if parts.is_empty() {
-        String::new()
-    } else {
-        format!(" ORDER BY {}", parts.join(", "))
-    }
-}
-
-fn top_skip_sql(q: &QueryOptions) -> String {
-    // SQLite requires LIMIT when OFFSET is present.
-    let limit = q.top.map(|n| n as i64).unwrap_or(-1);
-    let offset = q.skip.unwrap_or(0) as i64;
-    format!(" LIMIT {limit} OFFSET {offset}")
-}
-
-// ---------------------------------------------------------------------------
 // Room handlers
 // ---------------------------------------------------------------------------
 
+// NOTE: `$select` is currently passed as `None` because the typed row structs
+// (`Room`, `Printer`) require all columns to be present for `FromRow`.
+// Honoring `$select` end-to-end needs either `Option<T>` fields, a
+// `serde_json::Value` row type, or output-side JSON projection — a separate
+// change.
+
 async fn list_rooms(ctx: CollectionContext) -> impl IntoResponse {
-    let sql = format!(
-        "SELECT id, name FROM rooms{}{}",
-        order_by_sql(ctx.query.orderby.as_ref(), &["id", "name"]),
-        top_skip_sql(&ctx.query),
-    );
-    match sqlx::query_as::<_, Room>(&sql).fetch_all(db()).await {
+    let query = OQuery::<Room>::from("rooms")
+        .select(None, &["id", "name"])
+        .orderby(ctx.query.orderby.as_ref(), &["id", "name"])
+        .top_skip(&ctx.query);
+
+    match query.fetch_all(db()).await {
         Ok(rooms) => Json(rooms).into_response(),
         Err(e) => server_error(e),
     }
 }
 
 async fn get_room(ctx: EntityContext) -> impl IntoResponse {
-    match sqlx::query_as::<_, Room>("SELECT id, name FROM rooms WHERE id = ?")
-        .bind(&ctx.key)
-        .fetch_optional(db())
-        .await
-    {
+    let query = OQuery::<Room>::from("rooms")
+        .select(None, &["id", "name"])
+        .where_eq("id", ctx.key);
+
+    match query.fetch_optional(db()).await {
         Ok(Some(room)) => Json(room).into_response(),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => server_error(e),
@@ -166,30 +136,25 @@ async fn delete_room(ctx: EntityContext) -> impl IntoResponse {
 // ---------------------------------------------------------------------------
 
 async fn list_printers(ctx: ContainedCollectionContext) -> impl IntoResponse {
-    let sql = format!(
-        "SELECT id, model, room_id FROM printers WHERE room_id = ?{}{}",
-        order_by_sql(ctx.query.orderby.as_ref(), &["id", "model"]),
-        top_skip_sql(&ctx.query),
-    );
-    match sqlx::query_as::<_, Printer>(&sql)
-        .bind(&ctx.parent_key)
-        .fetch_all(db())
-        .await
-    {
+    let query = OQuery::<Printer>::from("printers")
+        .select(None, &["id", "model", "room_id"])
+        .where_eq("room_id", ctx.parent_key)
+        .orderby(ctx.query.orderby.as_ref(), &["id", "model"])
+        .top_skip(&ctx.query);
+
+    match query.fetch_all(db()).await {
         Ok(printers) => Json(printers).into_response(),
         Err(e) => server_error(e),
     }
 }
 
 async fn get_printer(ctx: ContainedEntityContext) -> impl IntoResponse {
-    match sqlx::query_as::<_, Printer>(
-        "SELECT id, model, room_id FROM printers WHERE room_id = ? AND id = ?",
-    )
-    .bind(&ctx.parent_key)
-    .bind(&ctx.key)
-    .fetch_optional(db())
-    .await
-    {
+    let query = OQuery::<Printer>::from("printers")
+        .select(None, &["id", "model", "room_id"])
+        .where_eq("room_id", ctx.parent_key)
+        .where_eq("id", ctx.key);
+
+    match query.fetch_optional(db()).await {
         Ok(Some(printer)) => Json(printer).into_response(),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => server_error(e),
@@ -299,7 +264,7 @@ async fn init_db() -> SqlitePool {
 // ---------------------------------------------------------------------------
 
 fn rooms_csdl_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/rooms.csdl.xml")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/rooms/rooms.csdl.xml")
 }
 
 fn build_schema() -> odata_edm::Result<Schema> {
