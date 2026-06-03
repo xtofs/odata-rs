@@ -15,5 +15,9 @@ cargo run -p odata-rs-edm --example csdl_to_model
 ```
 
 ```sh
-cargo run -p odata-rs-service --example rooms
+cargo run -p odata-rs-service --example rooms --features="sqlx-sqlite"
+```
+
+```sh
+RUST_LOG=tower_http=trace cargo run --example rooms -p odata-rs-service --features sqlx-sqlite
 ```

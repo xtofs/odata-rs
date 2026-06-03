@@ -2,50 +2,50 @@
 <Schema Namespace="BuildingManagement"
         Alias="Bm"
         xmlns="http://docs.oasis-open.org/odata/ns/edm">
-    <EntityType Name="Printer">
+    <EntityType Name="printer">
         <Key>
-            <PropertyRef Name="Id" />
+            <PropertyRef Name="id" />
         </Key>
-        <Property Name="Id"
+        <Property Name="id"
                   Type="Edm.String"
                   Nullable="false" />
-        <Property Name="Model"
+        <Property Name="model"
                   Type="Edm.String"
                   Nullable="false" />
     </EntityType>
-    <EntityType Name="Phone">
+    <EntityType Name="phone">
         <Key>
-            <PropertyRef Name="Id" />
+            <PropertyRef Name="id" />
         </Key>
-        <Property Name="Id"
+        <Property Name="id"
                   Type="Edm.String"
                   Nullable="false" />
-        <Property Name="Model"
+        <Property Name="model"
                   Type="Edm.String"
                   Nullable="false" />
-        <Property Name="Number"
+        <Property Name="number"
                   Type="Edm.String"
                   Nullable="false" />
     </EntityType>
-    <EntityType Name="Room">
+    <EntityType Name="room">
         <Key>
-            <PropertyRef Name="Id" />
+            <PropertyRef Name="id" />
         </Key>
-        <Property Name="Id"
+        <Property Name="id"
                   Type="Edm.String"
                   Nullable="false" />
-        <Property Name="Name"
+        <Property Name="name"
                   Type="Edm.String"
                   Nullable="false" />
-        <NavigationProperty Name="Printers"
-                            Type="Collection(BuildingManagement.Printer)"
+        <NavigationProperty Name="printers"
+                            Type="Collection(BuildingManagement.printer)"
                             ContainsTarget="true" />
-        <NavigationProperty Name="Phones"
-                            Type="Collection(BuildingManagement.Phone)"
+        <NavigationProperty Name="phones"
+                            Type="Collection(BuildingManagement.phone)"
                             ContainsTarget="true" />
     </EntityType>
     <EntityContainer Name="Container">
-        <EntitySet Name="Rooms"
-                   EntityType="BuildingManagement.Room" />
+        <EntitySet Name="rooms"
+                   EntityType="BuildingManagement.room" />
     </EntityContainer>
 </Schema>

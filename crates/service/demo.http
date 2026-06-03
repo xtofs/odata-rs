@@ -2,33 +2,31 @@
 @baseUrl = http://localhost:3000
 
 ###
-GET {{baseUrl}}/Rooms
+GET {{baseUrl}}/rooms
+
+###
+GET {{baseUrl}}/rooms?$top=2&$skip=1
+
+###
+GET {{baseUrl}}/rooms/oak-204
 
 
 ###
-GET {{baseUrl}}/Rooms?$skip=2
+GET {{baseUrl}}/rooms/oak-204/printers
 
 
 ###
-GET {{baseUrl}}/Rooms/oak-204
-
-
-###
-GET {{baseUrl}}/Rooms/oak-204/Printers
-
-
-###
-GET {{baseUrl}}/Rooms/redw-1002/Printers/prn1002-100
+GET {{baseUrl}}/rooms/redw-1002/printers/prn1002-100
 
 
 
 ###
-GET {{baseUrl}}/Rooms/nowhere
+GET {{baseUrl}}/rooms/nowhere
 
 
 
 ###
-POST {{baseUrl}}/Rooms
+POST {{baseUrl}}/rooms
 Content-Type: application/json
 
 {
@@ -38,6 +36,4 @@ Content-Type: application/json
 
 
 ###
-GET {{baseUrl}}/Rooms/stda-204
-w
-
+GET {{baseUrl}}/rooms/stda-204

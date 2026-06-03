@@ -285,26 +285,37 @@ fn build_schema() -> odata_edm::Result<Schema> {
 
 #[tokio::main]
 async fn main() {
+    // Request logging via tower-http's TraceLayer feeding the `tracing`
+    // ecosystem. Override the default with `RUST_LOG`, e.g.
+    // `RUST_LOG=tower_http=trace` to also dump request/response headers.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,tower_http=debug")),
+        )
+        .init();
+
     let schema = build_schema().expect("cannot parse rooms.csdl.xml into a service schema");
     let pool: AppState = Arc::new(init_db().await);
 
     let app = ODataServiceBuilder::new(schema)
         .with_state(pool)
-        .entity_set("Rooms", |es| {
+        .entity_set("rooms", |es| {
             es.list(list_rooms)
                 .get(get_room)
                 .create(create_room)
                 .delete(delete_room)
-                .contained("Printers", |nav| {
+                .contained("printers", |nav| {
                     nav.list(list_printers)
                         .get(get_printer)
                         .create(create_printer)
                         .delete(delete_printer)
                 })
         })
-        .build();
+        .build()
+        .layer(tower_http::trace::TraceLayer::new_for_http());
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("Listening on http://localhost:3000");
+    tracing::info!("Listening on http://localhost:3000");
     axum::serve(listener, app).await.unwrap();
 }

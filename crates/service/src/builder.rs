@@ -18,6 +18,10 @@ use super::context::{
     CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
 };
 
+// TODO: surface parse errors as 400 instead of silently falling back to
+// `QueryOptions::default()`. A malformed query string (e.g. `?$top=2$skip=1`
+// missing the `&`) currently looks identical to "no query options" from the
+// handler's perspective. See TODO/surface-query-parse-errors.md.
 fn parse_query(raw: Option<String>) -> QueryOptions {
     QueryOptions::parse(raw.as_deref().unwrap_or("")).unwrap_or_default()
 }
