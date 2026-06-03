@@ -13,6 +13,11 @@ use serde_json::Value as JsonValue;
 use odata_edm::Schema;
 use odata_url::QueryOptions;
 
+use super::config::{ContainedNavConfig, EntitySetConfig};
+use super::context::{
+    CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
+};
+
 fn parse_query(raw: Option<String>) -> QueryOptions {
     QueryOptions::parse(raw.as_deref().unwrap_or("")).unwrap_or_default()
 }
@@ -21,35 +26,68 @@ fn body_of(body: Option<Json<JsonValue>>) -> Option<JsonValue> {
     body.map(|Json(v)| v)
 }
 
-use super::config::{ContainedNavConfig, EntitySetConfig};
-use super::context::{
-    CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
-};
-
 // ---------------------------------------------------------------------------
 // Builder
 // ---------------------------------------------------------------------------
 
-pub struct ODataServiceBuilder {
+/// Builds an axum `Router` from an EDM schema plus per-entity-set handler
+/// registrations.
+///
+/// The builder is generic over an application state type `S`. The default,
+/// `()`, is used by stateless services. Use [`Self::with_state`] to attach a
+/// state value (typically a clonable resource handle like `Arc<SqlitePool>`)
+/// that every handler will receive as its second argument.
+///
+/// `with_state` is only available on `ODataServiceBuilder<()>`, so it must be
+/// called before any `entity_set` registration. After it, the builder type
+/// becomes `ODataServiceBuilder<S>` and handler signatures must match
+/// `Fn(Context, S) -> Future`.
+pub struct ODataServiceBuilder<S = ()> {
     schema: Arc<Schema>,
-    configs: HashMap<String, EntitySetConfig>,
+    state: S,
+    configs: HashMap<String, EntitySetConfig<S>>,
 }
 
-impl ODataServiceBuilder {
+impl ODataServiceBuilder<()> {
     pub fn new(schema: Schema) -> Self {
         Self {
             schema: Arc::new(schema),
+            state: (),
             configs: HashMap::new(),
         }
     }
 
+    /// Attach a state value that every handler will receive as its second
+    /// argument. Returns a new `ODataServiceBuilder<S>`.
+    ///
+    /// Only callable on an `ODataServiceBuilder<()>` — i.e. before any
+    /// `entity_set` registration. This is enforced at the type level: once
+    /// you've registered a handler with shape `Fn(Context) -> Fut`, the
+    /// builder type is fixed at `<()>` and the state-shape change cannot
+    /// retroactively apply to it.
+    pub fn with_state<S>(self, state: S) -> ODataServiceBuilder<S>
+    where
+        S: Clone + Send + Sync + 'static,
+    {
+        ODataServiceBuilder {
+            schema: self.schema,
+            state,
+            configs: HashMap::new(),
+        }
+    }
+}
+
+impl<S> ODataServiceBuilder<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     /// Register handlers for an entity set.
     ///
     /// Panics at call time if `name` is not an entity set in the schema.
     pub fn entity_set(
         mut self,
         name: &str,
-        f: impl FnOnce(EntitySetConfig) -> EntitySetConfig,
+        f: impl FnOnce(EntitySetConfig<S>) -> EntitySetConfig<S>,
     ) -> Self {
         assert!(
             self.schema.entity_set(name).is_some(),
@@ -73,8 +111,6 @@ impl ODataServiceBuilder {
     // Validation
     // -----------------------------------------------------------------------
 
-    /// Panic if the developer registered a contained nav prop that does not
-    /// exist (or is not marked ContainsTarget) on the entity type.
     fn validate_contained_nav_props(&self) {
         for (es_name, config) in &self.configs {
             let es = self.schema.entity_set(es_name).unwrap();
@@ -92,7 +128,6 @@ impl ODataServiceBuilder {
         }
     }
 
-    /// Print a warning for every operation that will fall back to 501.
     fn warn_gaps(&self) {
         for es_name in self.unimplemented_entity_sets() {
             eprintln!(
@@ -160,16 +195,9 @@ impl ODataServiceBuilder {
     // Router assembly
     // -----------------------------------------------------------------------
 
-    /// Build one router with all routes registered on it directly.
-    ///
-    /// matchit (axum's router) requires that wildcard names at the same path
-    /// segment position be identical across all routes. We use `{id}` for the
-    /// entity-set key and `{nav_id}` for the contained nav-prop key everywhere,
-    /// regardless of what the developer named their extractors.
-    ///
-    /// TODO: OData key syntax is /EntitySet('key') — defer to url module.
     fn assemble_router(mut self) -> Router {
         let es_names: Vec<String> = self.schema.entity_sets().map(|e| e.name.clone()).collect();
+        let state = self.state.clone();
 
         let mut router = Router::new();
 
@@ -182,6 +210,8 @@ impl ODataServiceBuilder {
                 let list = config.list.clone();
                 let create = config.create.clone();
                 let es = es_name.clone();
+                let state_get = state.clone();
+                let state_post = state.clone();
                 router = router.route(
                     &collection,
                     get({
@@ -190,6 +220,7 @@ impl ODataServiceBuilder {
                         move |RawQuery(q): RawQuery| {
                             let list = list.clone();
                             let es = es.clone();
+                            let s = state_get.clone();
                             async move {
                                 dispatch_collection(
                                     list,
@@ -198,6 +229,7 @@ impl ODataServiceBuilder {
                                         query: parse_query(q),
                                         body: None,
                                     },
+                                    s,
                                 )
                                 .await
                             }
@@ -208,6 +240,7 @@ impl ODataServiceBuilder {
                         move |RawQuery(q): RawQuery, body: Option<Json<JsonValue>>| {
                             let create = create.clone();
                             let es = es.clone();
+                            let s = state_post.clone();
                             async move {
                                 dispatch_collection(
                                     create,
@@ -216,6 +249,7 @@ impl ODataServiceBuilder {
                                         query: parse_query(q),
                                         body: body_of(body),
                                     },
+                                    s,
                                 )
                                 .await
                             }
@@ -225,14 +259,15 @@ impl ODataServiceBuilder {
             }
 
             // --- entity: /EntitySet/{id} ---
-            // All entity sets and contained nav routes use {id} at this position
-            // so matchit sees a consistent wildcard name.
             let entity = format!("/{es_name}/{{id}}");
             {
                 let get_h = config.get.clone();
                 let update = config.update.clone();
                 let delete_h = config.delete.clone();
                 let es = es_name.clone();
+                let state_get = state.clone();
+                let state_patch = state.clone();
+                let state_delete = state.clone();
                 router = router.route(
                     &entity,
                     get({
@@ -241,6 +276,7 @@ impl ODataServiceBuilder {
                         move |Path(id): Path<String>, RawQuery(q): RawQuery| {
                             let get_h = get_h.clone();
                             let es = es.clone();
+                            let s = state_get.clone();
                             async move {
                                 dispatch_entity(
                                     get_h,
@@ -250,6 +286,7 @@ impl ODataServiceBuilder {
                                         query: parse_query(q),
                                         body: None,
                                     },
+                                    s,
                                 )
                                 .await
                             }
@@ -262,6 +299,7 @@ impl ODataServiceBuilder {
                               body: Option<Json<JsonValue>>| {
                             let update = update.clone();
                             let es = es.clone();
+                            let s = state_patch.clone();
                             async move {
                                 dispatch_entity(
                                     update,
@@ -271,6 +309,7 @@ impl ODataServiceBuilder {
                                         query: parse_query(q),
                                         body: body_of(body),
                                     },
+                                    s,
                                 )
                                 .await
                             }
@@ -281,6 +320,7 @@ impl ODataServiceBuilder {
                         move |Path(id): Path<String>, RawQuery(q): RawQuery| {
                             let delete_h = delete_h.clone();
                             let es = es.clone();
+                            let s = state_delete.clone();
                             async move {
                                 dispatch_entity(
                                     delete_h,
@@ -290,6 +330,7 @@ impl ODataServiceBuilder {
                                         query: parse_query(q),
                                         body: None,
                                     },
+                                    s,
                                 )
                                 .await
                             }
@@ -307,13 +348,15 @@ impl ODataServiceBuilder {
                 for nav_name in nav_names {
                     let nav_config = config.contained.get(&nav_name).cloned().unwrap_or_default();
 
-                    // /EntitySet/{id}/NavProp  — uses same {id} as entity route
+                    // /EntitySet/{id}/NavProp
                     let nav_collection = format!("/{es_name}/{{id}}/{nav_name}");
                     {
                         let list = nav_config.list.clone();
                         let create = nav_config.create.clone();
                         let esn = es_name.clone();
                         let nav = nav_name.clone();
+                        let state_get = state.clone();
+                        let state_post = state.clone();
                         router = router.route(
                             &nav_collection,
                             get({
@@ -324,6 +367,7 @@ impl ODataServiceBuilder {
                                     let list = list.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
+                                    let s = state_get.clone();
                                     async move {
                                         dispatch_contained_collection(
                                             list,
@@ -334,6 +378,7 @@ impl ODataServiceBuilder {
                                                 query: parse_query(q),
                                                 body: None,
                                             },
+                                            s,
                                         )
                                         .await
                                     }
@@ -348,6 +393,7 @@ impl ODataServiceBuilder {
                                     let create = create.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
+                                    let s = state_post.clone();
                                     async move {
                                         dispatch_contained_collection(
                                             create,
@@ -358,6 +404,7 @@ impl ODataServiceBuilder {
                                                 query: parse_query(q),
                                                 body: body_of(body),
                                             },
+                                            s,
                                         )
                                         .await
                                     }
@@ -374,6 +421,9 @@ impl ODataServiceBuilder {
                         let delete_h = nav_config.delete.clone();
                         let esn = es_name.clone();
                         let nav = nav_name.clone();
+                        let state_get = state.clone();
+                        let state_patch = state.clone();
+                        let state_delete = state.clone();
                         router = router.route(
                             &nav_entity,
                             get({
@@ -385,6 +435,7 @@ impl ODataServiceBuilder {
                                     let get_h = get_h.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
+                                    let s = state_get.clone();
                                     async move {
                                         dispatch_contained_entity(
                                             get_h,
@@ -396,6 +447,7 @@ impl ODataServiceBuilder {
                                                 query: parse_query(q),
                                                 body: None,
                                             },
+                                            s,
                                         )
                                         .await
                                     }
@@ -410,6 +462,7 @@ impl ODataServiceBuilder {
                                     let update = update.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
+                                    let s = state_patch.clone();
                                     async move {
                                         dispatch_contained_entity(
                                             update,
@@ -421,6 +474,7 @@ impl ODataServiceBuilder {
                                                 query: parse_query(q),
                                                 body: body_of(body),
                                             },
+                                            s,
                                         )
                                         .await
                                     }
@@ -434,6 +488,7 @@ impl ODataServiceBuilder {
                                     let delete_h = delete_h.clone();
                                     let esn = esn.clone();
                                     let nav = nav.clone();
+                                    let s = state_delete.clone();
                                     async move {
                                         dispatch_contained_entity(
                                             delete_h,
@@ -445,6 +500,7 @@ impl ODataServiceBuilder {
                                                 query: parse_query(q),
                                                 body: None,
                                             },
+                                            s,
                                         )
                                         .await
                                     }
@@ -464,42 +520,46 @@ impl ODataServiceBuilder {
 // Dispatch helpers
 // ---------------------------------------------------------------------------
 
-async fn dispatch_collection(
-    handler: Option<super::config::CollectionHandlerFn>,
+async fn dispatch_collection<S>(
+    handler: Option<super::config::CollectionHandlerFn<S>>,
     ctx: CollectionContext,
+    state: S,
 ) -> axum::response::Response {
     match handler {
-        Some(h) => h(ctx).await,
+        Some(h) => h(ctx, state).await,
         None => StatusCode::NOT_IMPLEMENTED.into_response(),
     }
 }
 
-async fn dispatch_entity(
-    handler: Option<super::config::EntityHandlerFn>,
+async fn dispatch_entity<S>(
+    handler: Option<super::config::EntityHandlerFn<S>>,
     ctx: EntityContext,
+    state: S,
 ) -> axum::response::Response {
     match handler {
-        Some(h) => h(ctx).await,
+        Some(h) => h(ctx, state).await,
         None => StatusCode::NOT_IMPLEMENTED.into_response(),
     }
 }
 
-async fn dispatch_contained_collection(
-    handler: Option<super::config::ContainedCollectionHandlerFn>,
+async fn dispatch_contained_collection<S>(
+    handler: Option<super::config::ContainedCollectionHandlerFn<S>>,
     ctx: ContainedCollectionContext,
+    state: S,
 ) -> axum::response::Response {
     match handler {
-        Some(h) => h(ctx).await,
+        Some(h) => h(ctx, state).await,
         None => StatusCode::NOT_IMPLEMENTED.into_response(),
     }
 }
 
-async fn dispatch_contained_entity(
-    handler: Option<super::config::ContainedEntityHandlerFn>,
+async fn dispatch_contained_entity<S>(
+    handler: Option<super::config::ContainedEntityHandlerFn<S>>,
     ctx: ContainedEntityContext,
+    state: S,
 ) -> axum::response::Response {
     match handler {
-        Some(h) => h(ctx).await,
+        Some(h) => h(ctx, state).await,
         None => StatusCode::NOT_IMPLEMENTED.into_response(),
     }
 }
@@ -508,7 +568,7 @@ async fn dispatch_contained_entity(
 // Warning helpers
 // ---------------------------------------------------------------------------
 
-fn warn_entity_set_gaps(es_name: &str, config: &EntitySetConfig) {
+fn warn_entity_set_gaps<S>(es_name: &str, config: &EntitySetConfig<S>) {
     let ops = [
         ("list", config.list.is_some()),
         ("get", config.get.is_some()),
@@ -523,7 +583,7 @@ fn warn_entity_set_gaps(es_name: &str, config: &EntitySetConfig) {
     }
 }
 
-fn warn_contained_gaps(es_name: &str, nav_name: &str, config: &ContainedNavConfig) {
+fn warn_contained_gaps<S>(es_name: &str, nav_name: &str, config: &ContainedNavConfig<S>) {
     let ops = [
         ("list", config.list.is_some()),
         ("get", config.get.is_some()),
@@ -653,7 +713,7 @@ mod tests {
     #[test]
     fn detects_unimplemented_contained_collections_from_schema() {
         let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers())
-            .entity_set("Rooms", |es| es.list(|_| async { "ok" }));
+            .entity_set("Rooms", |es| es.list(|_, _: ()| async { "ok" }));
 
         assert_eq!(
             builder.unimplemented_contained_collections(),
@@ -665,7 +725,7 @@ mod tests {
     fn does_not_mark_registered_contained_collection_as_missing() {
         let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers())
             .entity_set("Rooms", |es| {
-                es.contained("Printers", |nav| nav.list(|_| async { "ok" }))
+                es.contained("Printers", |nav| nav.list(|_, _: ()| async { "ok" }))
             });
 
         assert!(builder.unimplemented_contained_collections().is_empty());

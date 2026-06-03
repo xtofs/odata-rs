@@ -17,7 +17,7 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::Arc;
 
 use axum::Json;
 use axum::http::StatusCode;
@@ -32,21 +32,19 @@ use odata_service::{
     ODataServiceBuilder,
 };
 
-use odata_service::oquery::OQuery;
+// `Allowed` is re-exported from `odata_service::oquery` for handlers that want
+// to pass `Allowed::All`. The example sticks to slice literals, which auto-
+// convert to `Allowed::Only` via the `From` impl.
+use odata_service::oquery::{OQuery, OQueryDynamic};
 
 // ---------------------------------------------------------------------------
-// Shared database pool
+// App state
 // ---------------------------------------------------------------------------
 //
-// Handlers in this version of the framework receive only their context — no
-// app-state injection — so we share the pool through a process-global
-// `OnceLock`. Good enough for an example.
+// The state value is cloned per request and passed as the handler's second
+// argument. We wrap the pool in `Arc` so cloning is cheap.
 
-static DB: OnceLock<SqlitePool> = OnceLock::new();
-
-fn db() -> &'static SqlitePool {
-    DB.get().expect("database pool not initialized")
-}
+type AppState = Arc<SqlitePool>;
 
 // ---------------------------------------------------------------------------
 // Domain types
@@ -77,31 +75,31 @@ pub struct Printer {
 // `serde_json::Value` row type, or output-side JSON projection — a separate
 // change.
 
-async fn list_rooms(ctx: CollectionContext) -> impl IntoResponse {
+async fn list_rooms(ctx: CollectionContext, pool: AppState) -> impl IntoResponse {
     let query = OQuery::<Room>::from("rooms")
         .select(None, &["id", "name"])
         .orderby(ctx.query.orderby.as_ref(), &["id", "name"])
-        .top_skip(&ctx.query);
+        .page(&ctx.query.page);
 
-    match query.fetch_all(db()).await {
+    match query.fetch_all(&pool).await {
         Ok(rooms) => Json(rooms).into_response(),
         Err(e) => server_error(e),
     }
 }
 
-async fn get_room(ctx: EntityContext) -> impl IntoResponse {
+async fn get_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
     let query = OQuery::<Room>::from("rooms")
         .select(None, &["id", "name"])
         .where_eq("id", ctx.key);
 
-    match query.fetch_optional(db()).await {
+    match query.fetch_optional(&pool).await {
         Ok(Some(room)) => Json(room).into_response(),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => server_error(e),
     }
 }
 
-async fn create_room(ctx: CollectionContext) -> impl IntoResponse {
+async fn create_room(ctx: CollectionContext, pool: AppState) -> impl IntoResponse {
     let Some(body) = ctx.body else {
         return (StatusCode::BAD_REQUEST, "expected JSON body").into_response();
     };
@@ -111,7 +109,7 @@ async fn create_room(ctx: CollectionContext) -> impl IntoResponse {
     match sqlx::query("INSERT INTO rooms (id, name) VALUES (?, ?)")
         .bind(&room.id)
         .bind(&room.name)
-        .execute(db())
+        .execute(&*pool)
         .await
     {
         Ok(_) => (StatusCode::CREATED, Json(room)).into_response(),
@@ -119,10 +117,10 @@ async fn create_room(ctx: CollectionContext) -> impl IntoResponse {
     }
 }
 
-async fn delete_room(ctx: EntityContext) -> impl IntoResponse {
+async fn delete_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
     match sqlx::query("DELETE FROM rooms WHERE id = ?")
         .bind(&ctx.key)
-        .execute(db())
+        .execute(&*pool)
         .await
     {
         Ok(r) if r.rows_affected() == 0 => StatusCode::NOT_FOUND.into_response(),
@@ -135,33 +133,35 @@ async fn delete_room(ctx: EntityContext) -> impl IntoResponse {
 // Printer (contained) handlers
 // ---------------------------------------------------------------------------
 
-async fn list_printers(ctx: ContainedCollectionContext) -> impl IntoResponse {
-    let query = OQuery::<Printer>::from("printers")
-        .select(None, &["id", "model", "room_id"])
+// Demonstrates the dynamic OQuery path: rows come back as JSON maps, and
+// `$select` shrinks the SQL projection directly.
+async fn list_printers(ctx: ContainedCollectionContext, pool: AppState) -> impl IntoResponse {
+    let query = OQueryDynamic::from("printers")
+        .select(ctx.query.select.as_ref(), &["id", "model", "room_id"])
         .where_eq("room_id", ctx.parent_key)
         .orderby(ctx.query.orderby.as_ref(), &["id", "model"])
-        .top_skip(&ctx.query);
+        .page(&ctx.query.page);
 
-    match query.fetch_all(db()).await {
-        Ok(printers) => Json(printers).into_response(),
+    match query.fetch_all(&pool).await {
+        Ok(rows) => Json(rows).into_response(),
         Err(e) => server_error(e),
     }
 }
 
-async fn get_printer(ctx: ContainedEntityContext) -> impl IntoResponse {
+async fn get_printer(ctx: ContainedEntityContext, pool: AppState) -> impl IntoResponse {
     let query = OQuery::<Printer>::from("printers")
         .select(None, &["id", "model", "room_id"])
         .where_eq("room_id", ctx.parent_key)
         .where_eq("id", ctx.key);
 
-    match query.fetch_optional(db()).await {
+    match query.fetch_optional(&pool).await {
         Ok(Some(printer)) => Json(printer).into_response(),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(e) => server_error(e),
     }
 }
 
-async fn create_printer(ctx: ContainedCollectionContext) -> impl IntoResponse {
+async fn create_printer(ctx: ContainedCollectionContext, pool: AppState) -> impl IntoResponse {
     let Some(body) = ctx.body else {
         return (StatusCode::BAD_REQUEST, "expected JSON body").into_response();
     };
@@ -172,7 +172,7 @@ async fn create_printer(ctx: ContainedCollectionContext) -> impl IntoResponse {
         .bind(&printer.id)
         .bind(&ctx.parent_key)
         .bind(&printer.model)
-        .execute(db())
+        .execute(&*pool)
         .await
     {
         Ok(_) => (StatusCode::CREATED, Json(printer)).into_response(),
@@ -180,11 +180,11 @@ async fn create_printer(ctx: ContainedCollectionContext) -> impl IntoResponse {
     }
 }
 
-async fn delete_printer(ctx: ContainedEntityContext) -> impl IntoResponse {
+async fn delete_printer(ctx: ContainedEntityContext, pool: AppState) -> impl IntoResponse {
     match sqlx::query("DELETE FROM printers WHERE room_id = ? AND id = ?")
         .bind(&ctx.parent_key)
         .bind(&ctx.key)
-        .execute(db())
+        .execute(&*pool)
         .await
     {
         Ok(r) if r.rows_affected() == 0 => StatusCode::NOT_FOUND.into_response(),
@@ -286,9 +286,10 @@ fn build_schema() -> odata_edm::Result<Schema> {
 #[tokio::main]
 async fn main() {
     let schema = build_schema().expect("cannot parse rooms.csdl.xml into a service schema");
-    DB.set(init_db().await).ok().expect("DB already initialized");
+    let pool: AppState = Arc::new(init_db().await);
 
     let app = ODataServiceBuilder::new(schema)
+        .with_state(pool)
         .entity_set("Rooms", |es| {
             es.list(list_rooms)
                 .get(get_room)

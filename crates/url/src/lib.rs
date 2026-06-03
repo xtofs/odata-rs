@@ -12,11 +12,26 @@ pub struct QueryOptions {
     pub select: Option<SelectClause>,
     pub filter: Option<FilterClause>,
     pub expand: Option<ExpandClause>,
-    pub top: Option<u64>,
-    pub skip: Option<u64>,
+    pub page: Page,
     pub orderby: Option<OrderByClause>,
     pub count: Option<bool>,
     pub custom: BTreeMap<String, Vec<String>>,
+}
+
+/// Server-driven paging options: `$top` (page size) and `$skip` (offset).
+///
+/// Bundled because they always travel together when applied to a query.
+/// Either or both may be absent.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Page {
+    pub top: Option<u64>,
+    pub skip: Option<u64>,
+}
+
+impl Page {
+    pub fn is_empty(&self) -> bool {
+        self.top.is_none() && self.skip.is_none()
+    }
 }
 
 impl QueryOptions {
@@ -36,8 +51,7 @@ impl From<ODataQuery> for QueryOptions {
             select: q.select,
             filter: q.filter,
             expand: q.expand,
-            top: q.top,
-            skip: q.skip,
+            page: q.page,
             orderby: q.orderby,
             count: q.inlinecount,
             custom: q.custom,
@@ -70,10 +84,8 @@ pub struct ODataQuery {
     pub filter: Option<FilterClause>,
     /// Parsed `$expand` query option.
     pub expand: Option<ExpandClause>,
-    /// Parsed `$top` query option.
-    pub top: Option<u64>,
-    /// Parsed `$skip` query option.
-    pub skip: Option<u64>,
+    /// Parsed `$top` and `$skip` query options.
+    pub page: Page,
     /// Parsed `$orderby` query option body.
     pub orderby: Option<OrderByClause>,
     /// Parsed inline count query option. `None` means absent.
@@ -224,8 +236,7 @@ impl ODataQuery {
             resource_path,
             r#ref,
             select: options.select,
-            skip: options.skip,
-            top: options.top,
+            page: options.page,
             value,
             url,
         })
@@ -253,7 +264,7 @@ where
             }
             "top" => {
                 assign_once(
-                    &mut out.top,
+                    &mut out.page.top,
                     "top",
                     option_value
                         .parse::<u64>()
@@ -265,7 +276,7 @@ where
             }
             "skip" => {
                 assign_once(
-                    &mut out.skip,
+                    &mut out.page.skip,
                     "skip",
                     option_value
                         .parse::<u64>()

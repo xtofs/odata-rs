@@ -25,7 +25,7 @@ fn main() {
                     println!("  Filter: {}", f);
                 }
                 println!("  Expand: {:?}", query.expand);
-                println!("  Top/Skip: {:?}/{:?}", query.top, query.skip);
+                println!("  Top/Skip: {:?}/{:?}", query.page.top, query.page.skip);
                 println!("  OrderBy: {:?}", query.orderby);
                 println!("  Inline count: {:?}", query.inlinecount);
                 println!("  Custom: {:?}", query.custom);

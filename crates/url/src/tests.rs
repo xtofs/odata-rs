@@ -60,8 +60,8 @@ fn parses_typed_query_options() {
             items: vec!["Items".to_string(), "Customer".to_string()],
         })
     );
-    assert_eq!(query.top, Some(10));
-    assert_eq!(query.skip, Some(3));
+    assert_eq!(query.page.top, Some(10));
+    assert_eq!(query.page.skip, Some(3));
     assert_eq!(
         query.orderby,
         Some(OrderByClause {
