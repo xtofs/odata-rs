@@ -403,3 +403,123 @@ fn retain_selected(value: &mut JsonValue, items: &[String]) {
         _ => {}
     }
 }
+
+// ---------------------------------------------------------------------------
+// Context → builder extension traits
+// ---------------------------------------------------------------------------
+//
+// Shortcuts for handlers that want the "default" mapping from a context to a
+// query: apply `$select` with no allowlist, then add the where/orderby/page
+// bits that the context shape implies. They cover the common easy case only —
+// any handler that needs a tighter allowlist or extra `where_eq` should keep
+// using the explicit builder.
+
+use crate::{
+    CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
+};
+
+/// `CollectionContext` → query with `$select`, `$orderby`, `$top/$skip` applied.
+pub trait CollectionCtxQuery {
+    fn oquery<T>(&self, table: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin;
+    fn oquery_dynamic(&self, table: &str) -> OQueryDynamic;
+}
+
+impl CollectionCtxQuery for CollectionContext {
+    fn oquery<T>(&self, table: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin,
+    {
+        OQuery::<T>::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .orderby(self.query.orderby.as_ref(), Allowed::All)
+            .page(&self.query.page)
+    }
+    fn oquery_dynamic(&self, table: &str) -> OQueryDynamic {
+        OQueryDynamic::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .orderby(self.query.orderby.as_ref(), Allowed::All)
+            .page(&self.query.page)
+    }
+}
+
+/// `EntityContext` → query with `$select` applied and `WHERE <key_col> = key`.
+pub trait EntityCtxQuery {
+    fn oquery<T>(&self, table: &str, key_col: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin;
+    fn oquery_dynamic(&self, table: &str, key_col: &str) -> OQueryDynamic;
+}
+
+impl EntityCtxQuery for EntityContext {
+    fn oquery<T>(&self, table: &str, key_col: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin,
+    {
+        OQuery::<T>::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .where_eq(key_col, self.key.clone())
+    }
+    fn oquery_dynamic(&self, table: &str, key_col: &str) -> OQueryDynamic {
+        OQueryDynamic::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .where_eq(key_col, self.key.clone())
+    }
+}
+
+/// `ContainedCollectionContext` → as `CollectionCtxQuery` plus
+/// `WHERE <fk_col> = parent_key`.
+pub trait ContainedCollectionCtxQuery {
+    fn oquery<T>(&self, table: &str, fk_col: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin;
+    fn oquery_dynamic(&self, table: &str, fk_col: &str) -> OQueryDynamic;
+}
+
+impl ContainedCollectionCtxQuery for ContainedCollectionContext {
+    fn oquery<T>(&self, table: &str, fk_col: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin,
+    {
+        OQuery::<T>::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .where_eq(fk_col, self.parent_key.clone())
+            .orderby(self.query.orderby.as_ref(), Allowed::All)
+            .page(&self.query.page)
+    }
+    fn oquery_dynamic(&self, table: &str, fk_col: &str) -> OQueryDynamic {
+        OQueryDynamic::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .where_eq(fk_col, self.parent_key.clone())
+            .orderby(self.query.orderby.as_ref(), Allowed::All)
+            .page(&self.query.page)
+    }
+}
+
+/// `ContainedEntityContext` → `$select` plus `WHERE <fk_col> = parent_key
+/// AND <key_col> = key`.
+pub trait ContainedEntityCtxQuery {
+    fn oquery<T>(&self, table: &str, fk_col: &str, key_col: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin;
+    fn oquery_dynamic(&self, table: &str, fk_col: &str, key_col: &str) -> OQueryDynamic;
+}
+
+impl ContainedEntityCtxQuery for ContainedEntityContext {
+    fn oquery<T>(&self, table: &str, fk_col: &str, key_col: &str) -> OQuery<T>
+    where
+        T: for<'r> FromRow<'r, SqliteRow> + Send + Unpin,
+    {
+        OQuery::<T>::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .where_eq(fk_col, self.parent_key.clone())
+            .where_eq(key_col, self.key.clone())
+    }
+    fn oquery_dynamic(&self, table: &str, fk_col: &str, key_col: &str) -> OQueryDynamic {
+        OQueryDynamic::from(table)
+            .select(self.query.select.as_ref(), Allowed::All)
+            .where_eq(fk_col, self.parent_key.clone())
+            .where_eq(key_col, self.key.clone())
+    }
+}
