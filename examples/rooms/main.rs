@@ -93,7 +93,11 @@ async fn list_rooms(ctx: CollectionContext, pool: AppState) -> impl IntoResponse
 
 async fn get_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
     let select = ctx.query.select.clone();
-    match ctx.oquery::<Room>("rooms", "id").fetch_optional(&pool).await {
+    match ctx
+        .oquery::<Room>("rooms", "id")
+        .fetch_optional(&pool)
+        .await
+    {
         Ok(Some(room)) => match project(room, select.as_ref()) {
             Ok(v) => Json(v).into_response(),
             Err(e) => server_error_msg(e.to_string()),
@@ -300,8 +304,9 @@ async fn main() {
     // `RUST_LOG=tower_http=trace` to also dump request/response headers.
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,tower_http=debug")),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("info,tower_http=debug,sqlx::query=debug")
+            }),
         )
         .init();
 

@@ -5,6 +5,7 @@
         "itertools",
         "prec",
         "redw",
+        "sqlx",
         "thiserror"
     ]
 }
