@@ -11,8 +11,10 @@ use axum::http::StatusCode;
 /// Not registered (501):  Rooms/create, update, delete
 ///                        Rooms/Printers/create, update, delete
 use axum::response::IntoResponse;
+use std::fs;
+use std::path::PathBuf;
 
-use odata_edm::{EntitySet, EntityType, NavigationProperty, Schema};
+use odata_edm::Schema;
 use odata_service::{
     CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
     ODataServiceBuilder,
@@ -44,7 +46,7 @@ static REDW_PRINTERS_ARR: [Printer; 2] = [
         id: "prn1002-200",
         model: "Canon ImageRunner",
     },
-] ;
+];
 
 pub static REDW_PRINTERS: &[Printer] = &REDW_PRINTERS_ARR;
 
@@ -103,22 +105,23 @@ async fn get_printer(ctx: ContainedEntityContext) -> impl IntoResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Schema builder (stub — real impl would parse CSDL/XML)
+// Schema loading from CSDL
 // ---------------------------------------------------------------------------
 
-fn build_schema() -> Schema {
-    let mut schema = Schema::new("BuildingManagement");
+fn rooms_csdl_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/rooms.csdl.xml")
+}
 
-    schema.add_entity_type(EntityType::new("Printer"));
+fn build_schema() -> odata_edm::Result<Schema> {
+    let path = rooms_csdl_path();
+    let csdl = fs::read_to_string(&path).map_err(|error| {
+        odata_edm::Error::Csdl(format!(
+            "failed to read CSDL file '{}': {error}",
+            path.display()
+        ))
+    })?;
 
-    schema.add_entity_type(
-        EntityType::new("Room")
-            .with_nav_prop(NavigationProperty::new("Printers", "Printer").contained()),
-    );
-
-    schema.add_entity_set(EntitySet::new("Rooms", "Room"));
-
-    schema
+    Schema::from_csdl(&csdl)
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +130,7 @@ fn build_schema() -> Schema {
 
 #[tokio::main]
 async fn main() {
-    let schema = build_schema();
+    let schema = build_schema().expect("rooms.csdl.xml should parse into a service schema");
 
     // Build the router. The library will:
     //   • warn for unregistered ops (create/update/delete on both levels)
@@ -136,15 +139,14 @@ async fn main() {
         .entity_set("Rooms", |es| {
             es.list(list_rooms)
                 .get(get_room)
-                .contained("Printers", |nav| nav.list(list_printers).get(get_printer))
+                .contained("Printers", |nav| {
+                    nav.list(list_printers) // list printers in room
+                        .get(get_printer) // get a specific printer in the room
+                })
         })
         .build();
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("Listening on http://localhost:3000");
-    println!("  GET /Rooms");
-    println!("  GET /Rooms/{{key}}");
-    println!("  GET /Rooms/{{key}}/Printers");
-    println!("  GET /Rooms/{{key}}/Printers/{{key}}");
     axum::serve(listener, app).await.unwrap();
 }

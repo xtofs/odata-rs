@@ -1,13 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Router,
-};
+use axum::{Router, extract::Path, http::StatusCode, response::IntoResponse, routing::get};
 
 use odata_edm::Schema;
 use odata_url::QueryOptions;
@@ -28,7 +22,10 @@ pub struct ODataServiceBuilder {
 
 impl ODataServiceBuilder {
     pub fn new(schema: Schema) -> Self {
-        Self { schema: Arc::new(schema), configs: HashMap::new() }
+        Self {
+            schema: Arc::new(schema),
+            configs: HashMap::new(),
+        }
     }
 
     /// Register handlers for an entity set.
@@ -44,7 +41,8 @@ impl ODataServiceBuilder {
             "[odata-rs] ERROR: entity set '{}' is not defined in the EDM schema",
             name
         );
-        self.configs.insert(name.to_string(), f(EntitySetConfig::default()));
+        self.configs
+            .insert(name.to_string(), f(EntitySetConfig::default()));
         self
     }
 
@@ -81,35 +79,66 @@ impl ODataServiceBuilder {
 
     /// Print a warning for every operation that will fall back to 501.
     fn warn_gaps(&self) {
-        for es in self.schema.entity_sets() {
-            match self.configs.get(&es.name) {
-                None => {
-                    eprintln!(
-                        "[odata-rs] WARN: entity set '{}' has no registered handlers \
-                         — all operations return 501",
-                        es.name
-                    );
-                }
-                Some(config) => {
-                    warn_entity_set_gaps(&es.name, config);
+        for es_name in self.unimplemented_entity_sets() {
+            eprintln!(
+                "[odata-rs] WARN: entity set '{}' has no registered handlers \
+                 — all operations return 501",
+                es_name
+            );
+        }
 
-                    if let Some(et) = self.schema.entity_type(&es.entity_type_name) {
-                        for nav in et.contained_nav_props() {
-                            match config.contained.get(&nav.name) {
-                                None => eprintln!(
-                                    "[odata-rs] WARN: contained nav prop '{}/{}' has no \
-                                     registered handlers — all operations return 501",
-                                    es.name, nav.name
-                                ),
-                                Some(nav_config) => {
-                                    warn_contained_gaps(&es.name, &nav.name, nav_config);
-                                }
-                            }
+        for (es_name, nav_name) in self.unimplemented_contained_collections() {
+            eprintln!(
+                "[odata-rs] WARN: contained nav prop '{}/{}' has no registered handlers \
+                 — all operations return 501",
+                es_name, nav_name
+            );
+        }
+
+        for es in self.schema.entity_sets() {
+            if let Some(config) = self.configs.get(&es.name) {
+                warn_entity_set_gaps(&es.name, config);
+
+                if let Some(et) = self.schema.entity_type(&es.entity_type_name) {
+                    for nav in et.contained_nav_props() {
+                        if let Some(nav_config) = config.contained.get(&nav.name) {
+                            warn_contained_gaps(&es.name, &nav.name, nav_config);
                         }
                     }
                 }
             }
         }
+    }
+
+    fn unimplemented_entity_sets(&self) -> Vec<String> {
+        self.schema
+            .entity_sets()
+            .map(|es| es.name.clone())
+            .filter(|es_name| !self.configs.contains_key(es_name))
+            .collect()
+    }
+
+    fn unimplemented_contained_collections(&self) -> Vec<(String, String)> {
+        let mut missing = Vec::new();
+
+        for es in self.schema.entity_sets() {
+            let Some(et) = self.schema.entity_type(&es.entity_type_name) else {
+                continue;
+            };
+
+            for nav in et.contained_nav_props() {
+                let implemented = self
+                    .configs
+                    .get(&es.name)
+                    .is_some_and(|cfg| cfg.contained.contains_key(&nav.name));
+
+                if !implemented {
+                    missing.push((es.name.clone(), nav.name.clone()));
+                }
+            }
+        }
+
+        missing
     }
 
     // -----------------------------------------------------------------------
@@ -125,8 +154,7 @@ impl ODataServiceBuilder {
     ///
     /// TODO: OData key syntax is /EntitySet('key') — defer to url module.
     fn assemble_router(mut self) -> Router {
-        let es_names: Vec<String> =
-            self.schema.entity_sets().map(|e| e.name.clone()).collect();
+        let es_names: Vec<String> = self.schema.entity_sets().map(|e| e.name.clone()).collect();
 
         let mut router = Router::new();
 
@@ -148,10 +176,14 @@ impl ODataServiceBuilder {
                             let list = list.clone();
                             let es = es.clone();
                             async move {
-                                dispatch_collection(list, CollectionContext {
-                                    entity_set: es,
-                                    query: QueryOptions::default(),
-                                }).await
+                                dispatch_collection(
+                                    list,
+                                    CollectionContext {
+                                        entity_set: es,
+                                        query: QueryOptions::default(),
+                                    },
+                                )
+                                .await
                             }
                         }
                     })
@@ -161,10 +193,14 @@ impl ODataServiceBuilder {
                             let create = create.clone();
                             let es = es.clone();
                             async move {
-                                dispatch_collection(create, CollectionContext {
-                                    entity_set: es,
-                                    query: QueryOptions::default(),
-                                }).await
+                                dispatch_collection(
+                                    create,
+                                    CollectionContext {
+                                        entity_set: es,
+                                        query: QueryOptions::default(),
+                                    },
+                                )
+                                .await
                             }
                         }
                     }),
@@ -189,9 +225,15 @@ impl ODataServiceBuilder {
                             let get_h = get_h.clone();
                             let es = es.clone();
                             async move {
-                                dispatch_entity(get_h, EntityContext {
-                                    entity_set: es, key: id, query: QueryOptions::default(),
-                                }).await
+                                dispatch_entity(
+                                    get_h,
+                                    EntityContext {
+                                        entity_set: es,
+                                        key: id,
+                                        query: QueryOptions::default(),
+                                    },
+                                )
+                                .await
                             }
                         }
                     })
@@ -201,9 +243,15 @@ impl ODataServiceBuilder {
                             let update = update.clone();
                             let es = es.clone();
                             async move {
-                                dispatch_entity(update, EntityContext {
-                                    entity_set: es, key: id, query: QueryOptions::default(),
-                                }).await
+                                dispatch_entity(
+                                    update,
+                                    EntityContext {
+                                        entity_set: es,
+                                        key: id,
+                                        query: QueryOptions::default(),
+                                    },
+                                )
+                                .await
                             }
                         }
                     })
@@ -213,9 +261,15 @@ impl ODataServiceBuilder {
                             let delete_h = delete_h.clone();
                             let es = es.clone();
                             async move {
-                                dispatch_entity(delete_h, EntityContext {
-                                    entity_set: es, key: id, query: QueryOptions::default(),
-                                }).await
+                                dispatch_entity(
+                                    delete_h,
+                                    EntityContext {
+                                        entity_set: es,
+                                        key: id,
+                                        query: QueryOptions::default(),
+                                    },
+                                )
+                                .await
                             }
                         }
                     }),
@@ -229,8 +283,7 @@ impl ODataServiceBuilder {
                     et.contained_nav_props().map(|n| n.name.clone()).collect();
 
                 for nav_name in nav_names {
-                    let nav_config =
-                        config.contained.get(&nav_name).cloned().unwrap_or_default();
+                    let nav_config = config.contained.get(&nav_name).cloned().unwrap_or_default();
 
                     // /EntitySet/{id}/NavProp  — uses same {id} as entity route
                     let nav_collection = format!("/{es_name}/{{id}}/{nav_name}");
@@ -250,10 +303,16 @@ impl ODataServiceBuilder {
                                     let esn = esn.clone();
                                     let nav = nav.clone();
                                     async move {
-                                        dispatch_contained_collection(list, ContainedCollectionContext {
-                                            entity_set: esn, parent_key: id,
-                                            nav_prop: nav, query: QueryOptions::default(),
-                                        }).await
+                                        dispatch_contained_collection(
+                                            list,
+                                            ContainedCollectionContext {
+                                                entity_set: esn,
+                                                parent_key: id,
+                                                nav_prop: nav,
+                                                query: QueryOptions::default(),
+                                            },
+                                        )
+                                        .await
                                     }
                                 }
                             })
@@ -265,10 +324,16 @@ impl ODataServiceBuilder {
                                     let esn = esn.clone();
                                     let nav = nav.clone();
                                     async move {
-                                        dispatch_contained_collection(create, ContainedCollectionContext {
-                                            entity_set: esn, parent_key: id,
-                                            nav_prop: nav, query: QueryOptions::default(),
-                                        }).await
+                                        dispatch_contained_collection(
+                                            create,
+                                            ContainedCollectionContext {
+                                                entity_set: esn,
+                                                parent_key: id,
+                                                nav_prop: nav,
+                                                query: QueryOptions::default(),
+                                            },
+                                        )
+                                        .await
                                     }
                                 }
                             }),
@@ -294,11 +359,17 @@ impl ODataServiceBuilder {
                                     let esn = esn.clone();
                                     let nav = nav.clone();
                                     async move {
-                                        dispatch_contained_entity(get_h, ContainedEntityContext {
-                                            entity_set: esn, parent_key: id,
-                                            nav_prop: nav, key: nav_id,
-                                            query: QueryOptions::default(),
-                                        }).await
+                                        dispatch_contained_entity(
+                                            get_h,
+                                            ContainedEntityContext {
+                                                entity_set: esn,
+                                                parent_key: id,
+                                                nav_prop: nav,
+                                                key: nav_id,
+                                                query: QueryOptions::default(),
+                                            },
+                                        )
+                                        .await
                                     }
                                 }
                             })
@@ -310,11 +381,17 @@ impl ODataServiceBuilder {
                                     let esn = esn.clone();
                                     let nav = nav.clone();
                                     async move {
-                                        dispatch_contained_entity(update, ContainedEntityContext {
-                                            entity_set: esn, parent_key: id,
-                                            nav_prop: nav, key: nav_id,
-                                            query: QueryOptions::default(),
-                                        }).await
+                                        dispatch_contained_entity(
+                                            update,
+                                            ContainedEntityContext {
+                                                entity_set: esn,
+                                                parent_key: id,
+                                                nav_prop: nav,
+                                                key: nav_id,
+                                                query: QueryOptions::default(),
+                                            },
+                                        )
+                                        .await
                                     }
                                 }
                             })
@@ -326,11 +403,17 @@ impl ODataServiceBuilder {
                                     let esn = esn.clone();
                                     let nav = nav.clone();
                                     async move {
-                                        dispatch_contained_entity(delete_h, ContainedEntityContext {
-                                            entity_set: esn, parent_key: id,
-                                            nav_prop: nav, key: nav_id,
-                                            query: QueryOptions::default(),
-                                        }).await
+                                        dispatch_contained_entity(
+                                            delete_h,
+                                            ContainedEntityContext {
+                                                entity_set: esn,
+                                                parent_key: id,
+                                                nav_prop: nav,
+                                                key: nav_id,
+                                                query: QueryOptions::default(),
+                                            },
+                                        )
+                                        .await
                                     }
                                 }
                             }),
@@ -394,8 +477,8 @@ async fn dispatch_contained_entity(
 
 fn warn_entity_set_gaps(es_name: &str, config: &EntitySetConfig) {
     let ops = [
-        ("list",   config.list.is_some()),
-        ("get",    config.get.is_some()),
+        ("list", config.list.is_some()),
+        ("get", config.get.is_some()),
         ("create", config.create.is_some()),
         ("update", config.update.is_some()),
         ("delete", config.delete.is_some()),
@@ -409,17 +492,15 @@ fn warn_entity_set_gaps(es_name: &str, config: &EntitySetConfig) {
 
 fn warn_contained_gaps(es_name: &str, nav_name: &str, config: &ContainedNavConfig) {
     let ops = [
-        ("list",   config.list.is_some()),
-        ("get",    config.get.is_some()),
+        ("list", config.list.is_some()),
+        ("get", config.get.is_some()),
         ("create", config.create.is_some()),
         ("update", config.update.is_some()),
         ("delete", config.delete.is_some()),
     ];
     for (op, registered) in ops {
         if !registered {
-            eprintln!(
-                "[odata-rs] WARN: {op} {es_name}/{nav_name} not implemented — returns 501"                
-            );
+            eprintln!("[odata-rs] WARN: {op} {es_name}/{nav_name} not implemented — returns 501");
         }
     }
 }
@@ -427,21 +508,29 @@ fn warn_contained_gaps(es_name: &str, nav_name: &str, config: &ContainedNavConfi
 #[cfg(test)]
 mod tests {
     use axum::{body::Body, http::Request};
+    use odata_edm::{EntitySet, EntityType, NavigationProperty, Schema};
     use tower::ServiceExt;
+
+    use super::ODataServiceBuilder;
 
     fn minimal_router() -> axum::Router {
         use axum::{extract::Path, routing::get};
         axum::Router::new()
             .route("/Rooms", get(|| async { "collection" }))
-            .route("/Rooms/{id}", get(|Path(id): Path<String>| async move {
-                format!("entity:{id}")
-            }))
-            .route("/Rooms/{id}/Printers", get(|Path(id): Path<String>| async move {
-                format!("nav-collection:{id}")
-            }))
-            .route("/Rooms/{id}/Printers/{nav_id}", get(|Path((id, nav_id)): Path<(String, String)>| async move {
-                format!("nav-entity:{id}:{nav_id}")
-            }))
+            .route(
+                "/Rooms/{id}",
+                get(|Path(id): Path<String>| async move { format!("entity:{id}") }),
+            )
+            .route(
+                "/Rooms/{id}/Printers",
+                get(|Path(id): Path<String>| async move { format!("nav-collection:{id}") }),
+            )
+            .route(
+                "/Rooms/{id}/Printers/{nav_id}",
+                get(|Path((id, nav_id)): Path<(String, String)>| async move {
+                    format!("nav-entity:{id}:{nav_id}")
+                }),
+            )
     }
 
     async fn status(router: axum::Router, uri: &str) -> u16 {
@@ -455,10 +544,16 @@ mod tests {
 
     #[tokio::test]
     async fn all_routes_resolve() {
-        assert_eq!(status(minimal_router(), "/Rooms").await,                          200);
-        assert_eq!(status(minimal_router(), "/Rooms/oak-204").await,                  200);
-        assert_eq!(status(minimal_router(), "/Rooms/redw-1002/Printers").await,       200);
-        assert_eq!(status(minimal_router(), "/Rooms/redw-1002/Printers/prn-100").await, 200);
+        assert_eq!(status(minimal_router(), "/Rooms").await, 200);
+        assert_eq!(status(minimal_router(), "/Rooms/oak-204").await, 200);
+        assert_eq!(
+            status(minimal_router(), "/Rooms/redw-1002/Printers").await,
+            200
+        );
+        assert_eq!(
+            status(minimal_router(), "/Rooms/redw-1002/Printers/prn-100").await,
+            200
+        );
     }
 
     #[tokio::test]
@@ -466,8 +561,15 @@ mod tests {
         use axum::{extract::Path, routing::get};
         let r = axum::Router::new()
             .route("/Rooms", get(|| async { "ok" }))
-            .route("/Rooms/{id}", get(|Path(id): Path<String>| async move { id }));
-        assert_eq!(status(r, "/Rooms/oak-204").await, 200, "entity route alone broken");
+            .route(
+                "/Rooms/{id}",
+                get(|Path(id): Path<String>| async move { id }),
+            );
+        assert_eq!(
+            status(r, "/Rooms/oak-204").await,
+            200,
+            "entity route alone broken"
+        );
     }
 
     #[tokio::test]
@@ -475,9 +577,64 @@ mod tests {
         use axum::{extract::Path, routing::get};
         let r = axum::Router::new()
             .route("/Rooms", get(|| async { "ok" }))
-            .route("/Rooms/{id}", get(|Path(id): Path<String>| async move { id.clone() }))
-            .route("/Rooms/{id}/Printers", get(|Path(id): Path<String>| async move { id }));
-        assert_eq!(status(r.clone(), "/Rooms/oak-204").await,            200, "entity broken after adding nav collection");
-        assert_eq!(status(r,         "/Rooms/redw/Printers").await,      200, "nav collection broken");
+            .route(
+                "/Rooms/{id}",
+                get(|Path(id): Path<String>| async move { id.clone() }),
+            )
+            .route(
+                "/Rooms/{id}/Printers",
+                get(|Path(id): Path<String>| async move { id }),
+            );
+        assert_eq!(
+            status(r.clone(), "/Rooms/oak-204").await,
+            200,
+            "entity broken after adding nav collection"
+        );
+        assert_eq!(
+            status(r, "/Rooms/redw/Printers").await,
+            200,
+            "nav collection broken"
+        );
+    }
+
+    fn schema_with_rooms_and_printers() -> Schema {
+        let mut schema = Schema::new("BuildingManagement");
+        schema.add_entity_type(EntityType::new("Printer"));
+        schema.add_entity_type(
+            EntityType::new("Room")
+                .with_nav_prop(NavigationProperty::new("Printers", "Printer").contained()),
+        );
+        schema.add_entity_set(EntitySet::new("Rooms", "Room"));
+        schema
+    }
+
+    #[test]
+    fn detects_unimplemented_entity_sets_from_schema() {
+        let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers());
+        assert_eq!(
+            builder.unimplemented_entity_sets(),
+            vec!["Rooms".to_string()]
+        );
+    }
+
+    #[test]
+    fn detects_unimplemented_contained_collections_from_schema() {
+        let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers())
+            .entity_set("Rooms", |es| es.list(|_| async { "ok" }));
+
+        assert_eq!(
+            builder.unimplemented_contained_collections(),
+            vec![("Rooms".to_string(), "Printers".to_string())]
+        );
+    }
+
+    #[test]
+    fn does_not_mark_registered_contained_collection_as_missing() {
+        let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers())
+            .entity_set("Rooms", |es| {
+                es.contained("Printers", |nav| nav.list(|_| async { "ok" }))
+            });
+
+        assert!(builder.unimplemented_contained_collections().is_empty());
     }
 }

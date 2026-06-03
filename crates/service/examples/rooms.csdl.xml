@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Schema Namespace="BuildingManagement"
+        Alias="Bm"
+        xmlns="http://docs.oasis-open.org/odata/ns/edm">
+    <EntityType Name="Printer">
+        <Key>
+            <PropertyRef Name="Id" />
+        </Key>
+        <Property Name="Id"
+                  Type="Edm.String"
+                  Nullable="false" />
+        <Property Name="Model"
+                  Type="Edm.String"
+                  Nullable="false" />
+    </EntityType>
+    <EntityType Name="Phone">
+        <Key>
+            <PropertyRef Name="Id" />
+        </Key>
+        <Property Name="Id"
+                  Type="Edm.String"
+                  Nullable="false" />
+        <Property Name="Model"
+                  Type="Edm.String"
+                  Nullable="false" />
+        <Property Name="Number"
+                  Type="Edm.String"
+                  Nullable="false" />
+    </EntityType>
+    <EntityType Name="Room">
+        <Key>
+            <PropertyRef Name="Id" />
+        </Key>
+        <Property Name="Id"
+                  Type="Edm.String"
+                  Nullable="false" />
+        <Property Name="Name"
+                  Type="Edm.String"
+                  Nullable="false" />
+        <NavigationProperty Name="Printers"
+                            Type="Collection(BuildingManagement.Printer)"
+                            ContainsTarget="true" />
+        <NavigationProperty Name="Phones"
+                            Type="Collection(BuildingManagement.Phone)"
+                            ContainsTarget="true" />
+    </EntityType>
+    <EntityContainer Name="Container">
+        <EntitySet Name="Rooms"
+                   EntityType="BuildingManagement.Room" />
+    </EntityContainer>
+</Schema>
