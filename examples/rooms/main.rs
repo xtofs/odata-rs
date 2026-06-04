@@ -80,9 +80,9 @@ pub struct Printer {
 // maps and `$select` drives the SQL projection directly. See ARCHITECTURE.md
 // §"Row representation: typed vs dynamic".
 
-async fn list_rooms(ctx: CollectionContext, pool: AppState) -> impl IntoResponse {
+async fn list_rooms(ctx: CollectionContext, state: AppState) -> impl IntoResponse {
     let select = ctx.query.select.clone();
-    match ctx.oquery::<Room>("rooms").fetch_all(&pool).await {
+    match ctx.oquery::<Room>("rooms").fetch_all(&state).await {
         Ok(rooms) => match project(rooms, select.as_ref()) {
             Ok(v) => Json(v).into_response(),
             Err(e) => server_error_msg(e.to_string()),
@@ -91,11 +91,11 @@ async fn list_rooms(ctx: CollectionContext, pool: AppState) -> impl IntoResponse
     }
 }
 
-async fn get_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
+async fn get_room(ctx: EntityContext, state: AppState) -> impl IntoResponse {
     let select = ctx.query.select.clone();
     match ctx
         .oquery::<Room>("rooms", "id")
-        .fetch_optional(&pool)
+        .fetch_optional(&state)
         .await
     {
         Ok(Some(room)) => match project(room, select.as_ref()) {
@@ -107,7 +107,7 @@ async fn get_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
     }
 }
 
-async fn create_room(ctx: CollectionContext, pool: AppState) -> impl IntoResponse {
+async fn create_room(ctx: CollectionContext, state: AppState) -> impl IntoResponse {
     let Some(body) = ctx.body else {
         return (StatusCode::BAD_REQUEST, "expected JSON body").into_response();
     };
@@ -117,7 +117,7 @@ async fn create_room(ctx: CollectionContext, pool: AppState) -> impl IntoRespons
     match sqlx::query("INSERT INTO rooms (id, name) VALUES (?, ?)")
         .bind(&room.id)
         .bind(&room.name)
-        .execute(&*pool)
+        .execute(&*state)
         .await
     {
         Ok(_) => (StatusCode::CREATED, Json(room)).into_response(),
@@ -125,10 +125,10 @@ async fn create_room(ctx: CollectionContext, pool: AppState) -> impl IntoRespons
     }
 }
 
-async fn delete_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
+async fn delete_room(ctx: EntityContext, state: AppState) -> impl IntoResponse {
     match sqlx::query("DELETE FROM rooms WHERE id = ?")
         .bind(&ctx.key)
-        .execute(&*pool)
+        .execute(&*state)
         .await
     {
         Ok(r) if r.rows_affected() == 0 => StatusCode::NOT_FOUND.into_response(),
@@ -144,10 +144,10 @@ async fn delete_room(ctx: EntityContext, pool: AppState) -> impl IntoResponse {
 // Dynamic path: rows come back as JSON maps (not `Printer` structs), so
 // `$select` can drive the SQL projection directly and no response-side
 // `project` is needed. Contrast with `list_rooms`.
-async fn list_printers(ctx: ContainedCollectionContext, pool: AppState) -> impl IntoResponse {
+async fn list_printers(ctx: ContainedCollectionContext, state: AppState) -> impl IntoResponse {
     match ctx
         .oquery_dynamic("printers", "room_id")
-        .fetch_all(&pool)
+        .fetch_all(&state)
         .await
     {
         Ok(rows) => Json(rows).into_response(),
@@ -155,11 +155,11 @@ async fn list_printers(ctx: ContainedCollectionContext, pool: AppState) -> impl 
     }
 }
 
-async fn get_printer(ctx: ContainedEntityContext, pool: AppState) -> impl IntoResponse {
+async fn get_printer(ctx: ContainedEntityContext, state: AppState) -> impl IntoResponse {
     let select = ctx.query.select.clone();
     match ctx
         .oquery::<Printer>("printers", "room_id", "id")
-        .fetch_optional(&pool)
+        .fetch_optional(&state)
         .await
     {
         Ok(Some(printer)) => match project(printer, select.as_ref()) {
@@ -171,7 +171,7 @@ async fn get_printer(ctx: ContainedEntityContext, pool: AppState) -> impl IntoRe
     }
 }
 
-async fn create_printer(ctx: ContainedCollectionContext, pool: AppState) -> impl IntoResponse {
+async fn create_printer(ctx: ContainedCollectionContext, state: AppState) -> impl IntoResponse {
     let Some(body) = ctx.body else {
         return (StatusCode::BAD_REQUEST, "expected JSON body").into_response();
     };
@@ -182,7 +182,7 @@ async fn create_printer(ctx: ContainedCollectionContext, pool: AppState) -> impl
         .bind(&printer.id)
         .bind(&ctx.parent_key)
         .bind(&printer.model)
-        .execute(&*pool)
+        .execute(&*state)
         .await
     {
         Ok(_) => (StatusCode::CREATED, Json(printer)).into_response(),
@@ -190,11 +190,11 @@ async fn create_printer(ctx: ContainedCollectionContext, pool: AppState) -> impl
     }
 }
 
-async fn delete_printer(ctx: ContainedEntityContext, pool: AppState) -> impl IntoResponse {
+async fn delete_printer(ctx: ContainedEntityContext, state: AppState) -> impl IntoResponse {
     match sqlx::query("DELETE FROM printers WHERE room_id = ? AND id = ?")
         .bind(&ctx.parent_key)
         .bind(&ctx.key)
-        .execute(&*pool)
+        .execute(&*state)
         .await
     {
         Ok(r) if r.rows_affected() == 0 => StatusCode::NOT_FOUND.into_response(),
@@ -299,13 +299,14 @@ fn load_schema() -> odata_edm::Result<Schema> {
 
 #[tokio::main]
 async fn main() {
-    let pool: AppState = Arc::new(init_db().await);
+    let state: AppState = Arc::new(init_db().await);
 
     // Request logging via tower-http's TraceLayer feeding the `tracing`
     // ecosystem. Override the default with `RUST_LOG`, e.g.
     // `RUST_LOG=tower_http=trace` to also dump request/response headers.
     tracing_subscriber::fmt()
         .with_ansi(true) // enable ANSI colors
+        .without_time()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 tracing_subscriber::EnvFilter::new("info,tower_http=debug,sqlx::query=debug")
@@ -319,7 +320,7 @@ async fn main() {
     write_scaffold(&schema);
 
     let app = ODataServiceBuilder::new(schema)
-        .with_state(pool)
+        .with_state(state)
         .entity_set("rooms", |es| {
             es.list(list_rooms)
                 .get(get_room)
