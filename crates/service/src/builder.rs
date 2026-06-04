@@ -105,6 +105,13 @@ where
 
     /// Validate registrations against the schema, warn on gaps, then build the
     /// axum `Router`.
+    ///
+    /// Gap warnings (unregistered handlers — every such route falls through to
+    /// `501 Not Implemented`) are emitted via `tracing::warn!` at build time.
+    /// They are a development aid: install a `tracing` subscriber (e.g.
+    /// `tracing_subscriber::fmt()`) **before** calling `build()` to see them.
+    /// Without a subscriber installed they are silently dropped, matching the
+    /// rest of the `tracing` ecosystem.
     pub fn build(self) -> Router {
         self.validate_contained_nav_props();
         self.warn_gaps();
@@ -134,18 +141,17 @@ where
 
     fn warn_gaps(&self) {
         for es_name in self.unimplemented_entity_sets() {
-            eprintln!(
-                "[odata-rs] WARN: entity set '{}' has no registered handlers \
-                 — all operations return 501",
+            tracing::warn!(
+                "entity set '{}' has no registered handlers — all operations return 501",
                 es_name
             );
         }
 
         for (es_name, nav_name) in self.unimplemented_contained_collections() {
-            eprintln!(
-                "[odata-rs] WARN: contained nav prop '{}/{}' has no registered handlers \
-                 — all operations return 501",
-                es_name, nav_name
+            tracing::warn!(
+                "contained nav prop '{}/{}' has no registered handlers — all operations return 501",
+                es_name,
+                nav_name
             );
         }
 
@@ -204,6 +210,19 @@ where
         let state = self.state.clone();
 
         let mut router = Router::new();
+
+        // Service document at the service root (OData JSON Format §5):
+        // an enumeration of the entity sets, singletons, and function imports
+        // the service exposes. Built once at construction time and cloned
+        // per request — the body is small and immutable.
+        let service_doc = build_service_document(&self.schema);
+        router = router.route(
+            "/",
+            get(move || {
+                let doc = service_doc.clone();
+                async move { Json(doc) }
+            }),
+        );
 
         for es_name in es_names {
             let config = self.configs.remove(&es_name).unwrap_or_default();
@@ -524,6 +543,30 @@ where
     }
 }
 
+/// Build the OData Service Document body (OData JSON Format §5).
+///
+/// Enumerates entity sets, singletons, and function imports. Today's schema
+/// only carries entity sets; singletons and function imports will appear here
+/// when the schema model grows. `kind` and `url` are emitted explicitly even
+/// where the spec would allow defaulting, because most consumers — including
+/// the .NET reference client — expect them present.
+fn build_service_document(schema: &odata_edm::Schema) -> JsonValue {
+    let entries: Vec<JsonValue> = schema
+        .entity_sets()
+        .map(|es| {
+            serde_json::json!({
+                "name": es.name,
+                "kind": "EntitySet",
+                "url": es.name,
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "@odata.context": "$metadata",
+        "value": entries,
+    })
+}
+
 async fn unmatched_route(method: Method, uri: Uri) -> impl IntoResponse {
     (
         StatusCode::NOT_FOUND,
@@ -588,30 +631,30 @@ async fn dispatch_contained_entity<S>(
 
 fn warn_entity_set_gaps<S>(es_name: &str, config: &EntitySetConfig<S>) {
     let ops = [
-        ("list", config.list.is_some()),
-        ("get", config.get.is_some()),
-        ("create", config.create.is_some()),
-        ("update", config.update.is_some()),
-        ("delete", config.delete.is_some()),
+        ("GET",    format!("/{es_name}"),         config.list.is_some()),
+        ("POST",   format!("/{es_name}"),         config.create.is_some()),
+        ("GET",    format!("/{es_name}/{{id}}"),  config.get.is_some()),
+        ("PATCH",  format!("/{es_name}/{{id}}"),  config.update.is_some()),
+        ("DELETE", format!("/{es_name}/{{id}}"),  config.delete.is_some()),
     ];
-    for (op, registered) in ops {
+    for (method, route, registered) in ops {
         if !registered {
-            eprintln!("[odata-rs] WARN: {op} {es_name} not implemented — returns 501");
+            tracing::warn!("{method} {route} not implemented — returns 501");
         }
     }
 }
 
 fn warn_contained_gaps<S>(es_name: &str, nav_name: &str, config: &ContainedNavConfig<S>) {
     let ops = [
-        ("list", config.list.is_some()),
-        ("get", config.get.is_some()),
-        ("create", config.create.is_some()),
-        ("update", config.update.is_some()),
-        ("delete", config.delete.is_some()),
+        ("GET",    format!("/{es_name}/{{id}}/{nav_name}"),            config.list.is_some()),
+        ("POST",   format!("/{es_name}/{{id}}/{nav_name}"),            config.create.is_some()),
+        ("GET",    format!("/{es_name}/{{id}}/{nav_name}/{{nav_id}}"), config.get.is_some()),
+        ("PATCH",  format!("/{es_name}/{{id}}/{nav_name}/{{nav_id}}"), config.update.is_some()),
+        ("DELETE", format!("/{es_name}/{{id}}/{nav_name}/{{nav_id}}"), config.delete.is_some()),
     ];
-    for (op, registered) in ops {
+    for (method, route, registered) in ops {
         if !registered {
-            eprintln!("[odata-rs] WARN: {op} {es_name}/{nav_name} not implemented — returns 501");
+            tracing::warn!("{method} {route} not implemented — returns 501");
         }
     }
 }
@@ -747,5 +790,26 @@ mod tests {
             });
 
         assert!(builder.unimplemented_contained_collections().is_empty());
+    }
+
+    #[tokio::test]
+    async fn service_document_lists_entity_sets() {
+        use axum::body::to_bytes;
+
+        let router = ODataServiceBuilder::new(schema_with_rooms_and_printers()).build();
+        let response = router
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(doc["@odata.context"], "$metadata");
+        let entries = doc["value"].as_array().expect("value must be an array");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["name"], "Rooms");
+        assert_eq!(entries[0]["kind"], "EntitySet");
+        assert_eq!(entries[0]["url"], "Rooms");
     }
 }

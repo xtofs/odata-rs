@@ -305,6 +305,7 @@ async fn main() {
     // ecosystem. Override the default with `RUST_LOG`, e.g.
     // `RUST_LOG=tower_http=trace` to also dump request/response headers.
     tracing_subscriber::fmt()
+        .with_ansi(true) // enable ANSI colors
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
                 tracing_subscriber::EnvFilter::new("info,tower_http=debug,sqlx::query=debug")
@@ -314,10 +315,38 @@ async fn main() {
 
     let schema: Schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
 
-    // Development aid: in debug builds, write a stub-handler file for the
-    // current schema to `target/scaffold.rs`. Useful when starting a new
-    // service or adapting to a schema change — copy the bits you need.
     #[cfg(debug_assertions)]
+    write_scaffold(&schema);
+
+    let app = ODataServiceBuilder::new(schema)
+        .with_state(pool)
+        .entity_set("rooms", |es| {
+            es.list(list_rooms)
+                .get(get_room)
+                .create(create_room)
+                .delete(delete_room)
+                .contained("printers", |printer| {
+                    printer
+                        .list(list_printers)
+                        .get(get_printer)
+                        .create(create_printer)
+                        .delete(delete_printer)
+                })
+            // .referential("events") |e| {}
+        })
+        .build()
+        .layer(tower_http::trace::TraceLayer::new_for_http());
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    tracing::info!("Listening on http://localhost:3000");
+    axum::serve(listener, app).await.unwrap();
+}
+
+// Development aid: in debug builds, write a stub-handler file for the
+// current schema to `target/scaffold.rs`. Useful when starting a new
+// service or adapting to a schema change — copy the bits you need.
+#[cfg(debug_assertions)]
+fn write_scaffold(schema: &Schema) {
     {
         use odata_service::scaffold::Scaffold;
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/scaffold.rs");
@@ -330,25 +359,4 @@ async fn main() {
             tracing::info!("wrote scaffold to {}", path.display());
         }
     }
-
-    let app = ODataServiceBuilder::new(schema)
-        .with_state(pool)
-        .entity_set("rooms", |es| {
-            es.list(list_rooms)
-                .get(get_room)
-                .create(create_room)
-                .delete(delete_room)
-                .contained("printers", |nav| {
-                    nav.list(list_printers)
-                        .get(get_printer)
-                        .create(create_printer)
-                        .delete(delete_printer)
-                })
-        })
-        .build()
-        .layer(tower_http::trace::TraceLayer::new_for_http());
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::info!("Listening on http://localhost:3000");
-    axum::serve(listener, app).await.unwrap();
 }

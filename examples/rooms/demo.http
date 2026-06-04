@@ -3,6 +3,13 @@
 
 
 ## ##########################
+## service document (lists exposed entity sets, singletons, function imports)
+
+###
+GET {{baseUrl}}/
+
+
+## ##########################
 ## retrieving rooms: all, a page, projection, unknown
 
 ###

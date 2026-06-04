@@ -18,6 +18,7 @@ odata_url = { package = "odata-rs-url", path = "../url" }
 serde = "1"
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros"], optional = true }
+tracing = "0.1"
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }
