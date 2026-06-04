@@ -3,6 +3,7 @@
         "csdl",
         "fmtp",
         "itertools",
+        "parameterizing",
         "prec",
         "redw",
         "sqlx",
