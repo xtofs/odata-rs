@@ -1,6 +1,7 @@
 mod builder;
 mod config;
 mod context;
+pub mod scaffold;
 
 #[cfg(feature = "sqlx-sqlite")]
 pub mod oquery;
