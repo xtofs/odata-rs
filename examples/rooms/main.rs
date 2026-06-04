@@ -299,6 +299,8 @@ fn load_schema() -> odata_edm::Result<Schema> {
 
 #[tokio::main]
 async fn main() {
+    let pool: AppState = Arc::new(init_db().await);
+
     // Request logging via tower-http's TraceLayer feeding the `tracing`
     // ecosystem. Override the default with `RUST_LOG`, e.g.
     // `RUST_LOG=tower_http=trace` to also dump request/response headers.
@@ -310,8 +312,24 @@ async fn main() {
         )
         .init();
 
-    let schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
-    let pool: AppState = Arc::new(init_db().await);
+    let schema: Schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
+
+    // Development aid: in debug builds, write a stub-handler file for the
+    // current schema to `target/scaffold.rs`. Useful when starting a new
+    // service or adapting to a schema change — copy the bits you need.
+    #[cfg(debug_assertions)]
+    {
+        use odata_service::scaffold::Scaffold;
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/scaffold.rs");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(e) = std::fs::write(&path, schema.scaffold()) {
+            tracing::warn!("failed to write scaffold to {}: {e}", path.display());
+        } else {
+            tracing::info!("wrote scaffold to {}", path.display());
+        }
+    }
 
     let app = ODataServiceBuilder::new(schema)
         .with_state(pool)
