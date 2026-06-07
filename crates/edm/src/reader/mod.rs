@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::io::{self, BufRead, Read};
 
@@ -13,18 +12,23 @@ use crate::expr::{BinaryOperator, CsdlAnnotationExpression, PropertyValue};
 /// so consumers see a single shape.
 /// it also normalizes self closing xml elements into a Start- and End
 /// element so that consumers can process a uniform "shape"
+///
+/// Names and attribute values are owned `String`s. The reader has to copy
+/// them out of `quick-xml`'s scratch buffer (which is reused across reads)
+/// anyway, and downstream consumers (the syntactic-model builder, callers of
+/// the public reader API) all want owned values.
 #[derive(Debug)]
-pub enum CsdlToken<'a> {
-    /// Opening tag of a CSDL *element* (Schema, EntityType, Annotation, ...).
+pub enum SyntaxUnit {
+    /// Opening tag of a XML CSDL *element* (Schema, EntityType, Annotation, ...).
     /// When the element is `<Annotation>`, any inline-attribute annotation
     /// expression (e.g. `String="x"`) is **removed** from `attributes` and
-    /// emitted instead as a following [`CsdlToken::AnnotationExpression`].
-    StartCsdlElement {
-        name: Cow<'a, str>,
-        attributes: Vec<(Cow<'a, str>, Cow<'a, str>)>,
+    /// emitted instead as a following [`SyntaxUnit::AnnotationExpression`].
+    StartElement {
+        name: String,
+        attributes: Vec<(String, String)>,
     },
-    /// Closing tag of a CSDL element.
-    EndCsdlElement { name: Cow<'a, str> },
+    /// Closing tag of a XML CSDL element.
+    EndElement { name: String },
     /// A single CSDL annotation *expression* — distinct from a CSDL element.
     /// Emitted only between Start/End of an element that carries annotation
     /// expressions, which per CSDL 4.01 is `Annotation` (14.2) or
@@ -107,35 +111,10 @@ impl<R: BufRead> Read for LocationBufRead<R> {
 pub struct CsdlReader<R: BufRead> {
     inner: quick_xml::Reader<LocationBufRead<R>>,
     buf: Vec<u8>,
-    deferred: VecDeque<OwnedToken>,
-    held: Option<OwnedToken>,
-}
-
-enum OwnedToken {
-    Start {
-        name: String,
-        attributes: Vec<(String, String)>,
-    },
-    End(String),
-    AnnotationExpression(CsdlAnnotationExpression),
-}
-
-impl OwnedToken {
-    fn as_token(&self) -> CsdlToken<'_> {
-        match self {
-            Self::Start { name, attributes } => CsdlToken::StartCsdlElement {
-                name: Cow::Borrowed(name.as_str()),
-                attributes: attributes
-                    .iter()
-                    .map(|(k, v)| (Cow::Borrowed(k.as_str()), Cow::Borrowed(v.as_str())))
-                    .collect(),
-            },
-            Self::End(name) => CsdlToken::EndCsdlElement {
-                name: Cow::Borrowed(name.as_str()),
-            },
-            Self::AnnotationExpression(e) => CsdlToken::AnnotationExpression(e.clone()),
-        }
-    }
+    /// Tokens queued during a complex element (Annotation / PropertyValue).
+    /// When non-empty, [`Self::next_token`] drains this before reading more
+    /// XML events.
+    deferred: VecDeque<SyntaxUnit>,
 }
 
 impl<R: BufRead> CsdlReader<R> {
@@ -146,7 +125,6 @@ impl<R: BufRead> CsdlReader<R> {
             inner,
             buf: Vec::new(),
             deferred: VecDeque::new(),
-            held: None,
         }
     }
 
@@ -168,12 +146,9 @@ impl<R: BufRead> CsdlReader<R> {
         ))
     }
 
-    pub fn next_token(&mut self) -> Result<Option<CsdlToken<'_>>> {
-        self.held = None;
-
+    pub fn next_token(&mut self) -> Result<Option<SyntaxUnit>> {
         if let Some(d) = self.deferred.pop_front() {
-            self.held = Some(d);
-            return Ok(Some(self.held.as_ref().unwrap().as_token()));
+            return Ok(Some(d));
         }
 
         loop {
@@ -194,27 +169,25 @@ impl<R: BufRead> CsdlReader<R> {
                         exprs.extend(self.read_expression_list("Annotation")?);
                         for ex in exprs {
                             self.deferred
-                                .push_back(OwnedToken::AnnotationExpression(ex));
+                                .push_back(SyntaxUnit::AnnotationExpression(ex));
                         }
-                        self.deferred
-                            .push_back(OwnedToken::End("Annotation".to_string()));
-                        self.held = Some(OwnedToken::Start {
+                        self.deferred.push_back(SyntaxUnit::EndElement {
+                            name: "Annotation".to_string(),
+                        });
+                        return Ok(Some(SyntaxUnit::StartElement {
                             name,
                             attributes: attrs,
-                        });
-                        return Ok(Some(self.held.as_ref().unwrap().as_token()));
+                        }));
                     }
 
-                    self.held = Some(OwnedToken::Start {
+                    return Ok(Some(SyntaxUnit::StartElement {
                         name,
                         attributes: attrs,
-                    });
-                    return Ok(Some(self.held.as_ref().unwrap().as_token()));
+                    }));
                 }
                 Event::End(e) => {
                     let name = local_name_string(e.name().as_ref())?;
-                    self.held = Some(OwnedToken::End(name));
-                    return Ok(Some(self.held.as_ref().unwrap().as_token()));
+                    return Ok(Some(SyntaxUnit::EndElement { name }));
                 }
                 Event::Empty(e) => {
                     let (name, mut attrs) = parse_start(&e)?;
@@ -224,23 +197,23 @@ impl<R: BufRead> CsdlReader<R> {
                             let (k, v) = attrs.remove(idx);
                             let expr = constant_attr_to_expr(&k, v);
                             self.deferred
-                                .push_back(OwnedToken::AnnotationExpression(expr));
+                                .push_back(SyntaxUnit::AnnotationExpression(expr));
                         }
-                        self.deferred
-                            .push_back(OwnedToken::End("Annotation".to_string()));
-                        self.held = Some(OwnedToken::Start {
+                        self.deferred.push_back(SyntaxUnit::EndElement {
+                            name: "Annotation".to_string(),
+                        });
+                        return Ok(Some(SyntaxUnit::StartElement {
                             name,
                             attributes: attrs,
-                        });
-                        return Ok(Some(self.held.as_ref().unwrap().as_token()));
+                        }));
                     }
 
-                    self.deferred.push_back(OwnedToken::End(name.clone()));
-                    self.held = Some(OwnedToken::Start {
+                    self.deferred
+                        .push_back(SyntaxUnit::EndElement { name: name.clone() });
+                    return Ok(Some(SyntaxUnit::StartElement {
                         name,
                         attributes: attrs,
-                    });
-                    return Ok(Some(self.held.as_ref().unwrap().as_token()));
+                    }));
                 }
                 _ => continue,
             }
@@ -468,7 +441,7 @@ impl<R: BufRead> CsdlReader<R> {
                     }
                     let property = attr_value(&a, "Property").unwrap_or_default();
                     let inline = find_inline_constant_idx(&a).map(|idx| {
-                        let (k, v) = a.remove(idx);
+                        let (k, v) = a.swap_remove(idx);
                         constant_attr_to_expr(&k, v)
                     });
                     let body = self.read_expression_list("PropertyValue")?;

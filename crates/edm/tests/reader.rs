@@ -15,11 +15,11 @@
 
 use std::io::BufRead;
 
-use odata_edm::reader::{CsdlReader, CsdlToken};
+use odata_edm::reader::{CsdlReader, SyntaxUnit};
 
-fn fmt_token(t: CsdlToken<'_>) -> String {
+fn fmt_token(t: SyntaxUnit) -> String {
     match t {
-        CsdlToken::StartCsdlElement { name, attributes } => {
+        SyntaxUnit::StartElement { name, attributes } => {
             let attr_str = attributes
                 .iter()
                 .map(|(k, v)| format!("{k}={v}"))
@@ -31,8 +31,8 @@ fn fmt_token(t: CsdlToken<'_>) -> String {
                 format!("Start({name} {attr_str})")
             }
         }
-        CsdlToken::EndCsdlElement { name } => format!("End({name})"),
-        CsdlToken::AnnotationExpression(e) => format!("Expr({e:?})"),
+        SyntaxUnit::EndElement { name } => format!("End({name})"),
+        SyntaxUnit::AnnotationExpression(e) => format!("Expr({e:?})"),
     }
 }
 

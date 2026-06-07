@@ -17,12 +17,11 @@ use std::io::BufRead;
 use crate::Result;
 use crate::error::Error;
 use crate::expr::{Annotation, CsdlAnnotationExpression};
+use crate::reader::{CsdlReader, Location, SyntaxUnit};
 use crate::syntactic::*;
-use crate::reader::{CsdlReader, CsdlToken, Location};
 
 /// CSDL element meta-table: the structural constraints the builder enforces.
 mod meta;
-
 
 pub fn build_model<R: BufRead>(reader: &mut CsdlReader<R>) -> Result<EdmModel> {
     let mut b = Builder::default();
@@ -68,7 +67,9 @@ enum Frame {
         expressions_seen: u32,
     },
     /// Element we don't model. Tracks depth so End handling stays correct.
-    Unknown { name: String },
+    Unknown {
+        name: String,
+    },
 }
 
 impl Frame {
@@ -98,22 +99,18 @@ impl Frame {
 impl Builder {
     fn run<R: BufRead>(&mut self, reader: &mut CsdlReader<R>) -> Result<()> {
         loop {
-            // Detach the token from `reader`'s lifetime so we can read its
-            // location afterward without the borrow checker tripping over the
-            // (already consumed) Cow borrow.
+            // `CsdlToken` now carries owned `String`s directly, so we just
+            // bind them through. The intermediate `Local` step survives
+            // because we still want to read the reader's location *after*
+            // consuming the token (some emit sites use it for diagnostics).
             let local = match reader.next_token()? {
                 None => return Ok(()),
-                Some(CsdlToken::StartCsdlElement { name, attributes }) => Local::Start {
-                    name: name.into_owned(),
-                    attrs: attributes
-                        .into_iter()
-                        .map(|(k, v)| (k.into_owned(), v.into_owned()))
-                        .collect(),
+                Some(SyntaxUnit::StartElement { name, attributes }) => Local::Start {
+                    name,
+                    attrs: attributes,
                 },
-                Some(CsdlToken::EndCsdlElement { name }) => Local::End {
-                    name: name.into_owned(),
-                },
-                Some(CsdlToken::AnnotationExpression(e)) => Local::AnnotationExpression(e),
+                Some(SyntaxUnit::EndElement { name }) => Local::End { name },
+                Some(SyntaxUnit::AnnotationExpression(e)) => Local::AnnotationExpression(e),
             };
             let loc = reader.current_location();
             match local {
@@ -198,24 +195,26 @@ impl Builder {
                 }));
             }
             "NavigationProperty" => {
-                self.stack.push(Frame::NavigationProperty(NavigationProperty {
-                    name: attr_owned(attrs, "Name").unwrap_or_default(),
-                    type_: attr_owned(attrs, "Type").unwrap_or_default(),
-                    nullable: attr_bool(attrs, "Nullable", true),
-                    partner: attr_owned(attrs, "Partner"),
-                    contains_target: attr_bool(attrs, "ContainsTarget", false),
-                    referential_constraints: Vec::new(),
-                    on_delete: None,
-                    annotations: Vec::new(),
-                }));
+                self.stack
+                    .push(Frame::NavigationProperty(NavigationProperty {
+                        name: attr_owned(attrs, "Name").unwrap_or_default(),
+                        type_: attr_owned(attrs, "Type").unwrap_or_default(),
+                        nullable: attr_bool(attrs, "Nullable", true),
+                        partner: attr_owned(attrs, "Partner"),
+                        contains_target: attr_bool(attrs, "ContainsTarget", false),
+                        referential_constraints: Vec::new(),
+                        on_delete: None,
+                        annotations: Vec::new(),
+                    }));
             }
             "ReferentialConstraint" => {
-                self.stack.push(Frame::ReferentialConstraint(ReferentialConstraint {
-                    property: attr_owned(attrs, "Property").unwrap_or_default(),
-                    referenced_property: attr_owned(attrs, "ReferencedProperty")
-                        .unwrap_or_default(),
-                    annotations: Vec::new(),
-                }));
+                self.stack
+                    .push(Frame::ReferentialConstraint(ReferentialConstraint {
+                        property: attr_owned(attrs, "Property").unwrap_or_default(),
+                        referenced_property: attr_owned(attrs, "ReferencedProperty")
+                            .unwrap_or_default(),
+                        annotations: Vec::new(),
+                    }));
             }
             "OnDelete" => {
                 let raw = attr(attrs, "Action").unwrap_or("None");
@@ -271,11 +270,7 @@ impl Builder {
                 self.stack.push(Frame::EntitySet(EntitySet {
                     name: attr_owned(attrs, "Name").unwrap_or_default(),
                     entity_type: attr_owned(attrs, "EntityType").unwrap_or_default(),
-                    include_in_service_document: attr_bool(
-                        attrs,
-                        "IncludeInServiceDocument",
-                        true,
-                    ),
+                    include_in_service_document: attr_bool(attrs, "IncludeInServiceDocument", true),
                     navigation_property_bindings: Vec::new(),
                     annotations: Vec::new(),
                 }));
@@ -289,10 +284,12 @@ impl Builder {
                 }));
             }
             "NavigationPropertyBinding" => {
-                self.stack.push(Frame::NavigationPropertyBinding(NavigationPropertyBinding {
-                    path: attr_owned(attrs, "Path").unwrap_or_default(),
-                    target: attr_owned(attrs, "Target").unwrap_or_default(),
-                }));
+                self.stack.push(Frame::NavigationPropertyBinding(
+                    NavigationPropertyBinding {
+                        path: attr_owned(attrs, "Path").unwrap_or_default(),
+                        target: attr_owned(attrs, "Target").unwrap_or_default(),
+                    },
+                ));
             }
             "Annotation" => {
                 self.stack.push(Frame::Annotation {
@@ -316,13 +313,13 @@ impl Builder {
 
     fn handle_end(&mut self, name: &str, loc: Location) -> Result<()> {
         let frame = self.stack.pop().ok_or_else(|| {
-            err_at(loc, format!("unexpected </{name}> with empty element stack"))
+            err_at(
+                loc,
+                format!("unexpected </{name}> with empty element stack"),
+            )
         })?;
         if frame.label() != name {
-            return Err(err_at(
-                loc,
-                format!("</{name}> closes <{}>", frame.label()),
-            ));
+            return Err(err_at(loc, format!("</{name}> closes <{}>", frame.label())));
         }
 
         match frame {

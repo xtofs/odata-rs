@@ -42,6 +42,49 @@ use odata_service::oquery::{
 };
 
 // ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+#[tokio::main]
+async fn main() {
+    let state: AppState = Arc::new(init_db().await);
+
+    init_tracing();
+
+    let schema: Schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
+
+    #[cfg(debug_assertions)]
+    write_scaffold(&schema);
+
+    let service = ODataServiceBuilder::new(schema)
+        .with_state(state)
+        .entity_set("rooms", |es| {
+            es.list(list_rooms)
+                .get(get_room)
+                .create(create_room)
+                .delete(delete_room)
+                .contained("printers", |printer| {
+                    printer
+                        .list(list_printers)
+                        .get(get_printer)
+                        .create(create_printer)
+                        .delete(delete_printer)
+                })
+            // .referential("events") |e| {}
+        })
+        .build()
+        .layer(tower_http::trace::TraceLayer::new_for_http());
+
+    let port = 3000;
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
+        .await
+        .unwrap();
+
+    tracing::info!("Listening on http://localhost:{port}");
+    axum::serve(listener, service).await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
 // App state
 // ---------------------------------------------------------------------------
 //
@@ -293,56 +336,6 @@ fn load_schema() -> odata_edm::Result<Schema> {
     Schema::from_csdl(&csdl)
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-#[tokio::main]
-async fn main() {
-    let state: AppState = Arc::new(init_db().await);
-
-    // Request logging via tower-http's TraceLayer feeding the `tracing`
-    // ecosystem. Override the default with `RUST_LOG`, e.g.
-    // `RUST_LOG=tower_http=trace` to also dump request/response headers.
-    tracing_subscriber::fmt()
-        .with_ansi(true) // enable ANSI colors
-        .without_time()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                tracing_subscriber::EnvFilter::new("info,tower_http=debug,sqlx::query=debug")
-            }),
-        )
-        .init();
-
-    let schema: Schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
-
-    #[cfg(debug_assertions)]
-    write_scaffold(&schema);
-
-    let app = ODataServiceBuilder::new(schema)
-        .with_state(state)
-        .entity_set("rooms", |es| {
-            es.list(list_rooms)
-                .get(get_room)
-                .create(create_room)
-                .delete(delete_room)
-                .contained("printers", |printer| {
-                    printer
-                        .list(list_printers)
-                        .get(get_printer)
-                        .create(create_printer)
-                        .delete(delete_printer)
-                })
-            // .referential("events") |e| {}
-        })
-        .build()
-        .layer(tower_http::trace::TraceLayer::new_for_http());
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::info!("Listening on http://localhost:3000");
-    axum::serve(listener, app).await.unwrap();
-}
-
 // Development aid: in debug builds, write a stub-handler file for the
 // current schema to `target/scaffold.rs`. Useful when starting a new
 // service or adapting to a schema change — copy the bits you need.
@@ -360,4 +353,19 @@ fn write_scaffold(schema: &Schema) {
             tracing::info!("wrote scaffold to {}", path.display());
         }
     }
+}
+
+fn init_tracing() {
+    // Request logging via tower-http's TraceLayer feeding the `tracing`
+    // ecosystem. Override the default with `RUST_LOG`, e.g.
+    // `RUST_LOG=tower_http=trace` to also dump request/response headers.
+    tracing_subscriber::fmt()
+        .with_ansi(true) // enable ANSI colors
+        .without_time()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                tracing_subscriber::EnvFilter::new("info,tower_http=debug,sqlx::query=debug")
+            }),
+        )
+        .init();
 }

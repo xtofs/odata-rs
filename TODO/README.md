@@ -19,10 +19,10 @@ One file per open item, so each is a focused context unit for both humans and ag
 ## Reader / diagnostics
 
 - [semantic-graph](semantic-graph.md) — semantic graph vs syntactic tree representation.
-- [structured-warnings](structured-warnings.md) — emit reader/parser warnings through a structured `Diagnostic` channel instead of silently dropping suspect input.
+- [edm-structured-warnings](edm-structured-warnings.md) — emit reader/parser warnings through a structured `Diagnostic` channel instead of silently dropping suspect input.
 - [utf8-aware-column-counting](utf8-aware-column-counting.md) — `Location::column` counts bytes, not Unicode characters; matters for non-ASCII CSDL.
-- [zero-copy-token-strings](zero-copy-token-strings.md) — `CsdlToken` claims `Cow<'a, str>` but currently always allocates; route reads through the borrowed input buffer.
 
 ## Service / router
 
+- [service-metadata-endpoint](service-metadata-endpoint.md) — implement `GET /$metadata`; canonical target is full schema + `Org.OData.Capabilities.V1.*` annotations derived from registered handlers. Lists the supporting work (CSDL writer, capabilities vocabulary, annotation emission, profile derivation).
 - [surface-query-parse-errors](surface-query-parse-errors.md) — return `400 Bad Request` for malformed query strings instead of silently falling back to default `QueryOptions`.

@@ -17,7 +17,7 @@
 
 use odata_edm::Result;
 use odata_edm::builder::build_model;
-use odata_edm::reader::{CsdlReader, CsdlToken};
+use odata_edm::reader::{CsdlReader, SyntaxUnit};
 
 /// Inlined at compile time from `examples/sample.csdl.xml` so that line/column
 /// positions printed by Stage 1 line up with the file on disk — open the file
@@ -34,7 +34,7 @@ fn main() -> Result<()> {
     // Detach the token from `reader`'s borrow so we can call
     // `current_location` afterward to print the cursor position.
     while let Some(tok) = reader.next_token()? {
-        let line = format_token(tok);
+        let line = format_unit(tok);
         let loc = reader.current_location();
         println!(
             // "  [sample.csdl.xml({:>2}:{:>2})] {line}",
@@ -165,9 +165,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn format_token(token: CsdlToken<'_>) -> String {
-    match token {
-        CsdlToken::StartCsdlElement { name, attributes } => {
+fn format_unit(unit: SyntaxUnit) -> String {
+    match unit {
+        SyntaxUnit::StartElement { name, attributes } => {
             let attrs = attributes
                 .iter()
                 .map(|(k, v)| format!("{k}={v:?}"))
@@ -180,7 +180,7 @@ fn format_token(token: CsdlToken<'_>) -> String {
                 format!("Start {name} [{attrs}]")
             }
         }
-        CsdlToken::EndCsdlElement { name } => format!("End   {name}"),
-        CsdlToken::AnnotationExpression(expr) => format!("Expr  {expr:?}"),
+        SyntaxUnit::EndElement { name } => format!("End   {name}"),
+        SyntaxUnit::AnnotationExpression(expr) => format!("Expr  {expr:?}"),
     }
 }
