@@ -18,6 +18,16 @@ cargo run -p csdl-edm --example parse_resolve_validate
 cargo run --example rooms --features sqlx-sqlite
 ```
 
+run the rooms end-to-end HTTP scenario with Hurl (starts/stops service automatically)
+
+```powershell
+pwsh ./scripts/test-rooms-hurl.ps1
+```
+
+```bash
+bash ./scripts/test-rooms-hurl.sh
+```
+
 show HTTP trace messages
 
 ```sh
