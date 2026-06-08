@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm" Version="4.01">
+    <edmx:DataServices>
+        <Schema Namespace="RecordDemo">
+            <EntityType Name="Book">
+                <Key><PropertyRef Name="ISBN"/></Key>
+                <Property Name="ISBN" Nullable="false"/>
+                <Property Name="Title" Nullable="false">
+                    <Annotation Term="UI.Importance">
+                        <Record>
+                            <Annotation Term="Core.Description" String="Importance hint"/>
+                            <PropertyValue Property="Level" String="High">
+                                <Annotation Term="Core.Description" String="The importance level"/>
+                            </PropertyValue>
+                            <PropertyValue Property="Weight" Int="10"/>
+                        </Record>
+                    </Annotation>
+                </Property>
+            </EntityType>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>

@@ -2,13 +2,15 @@
 
 ## Crate layout
 
-- **`odata-rs-edm`** — CSDL parser, `Schema`, `EntityType`, `EntitySet`, `NavigationProperty`.
+- **`csdl-edm`** — CSDL parsing (XML and JSON) and serialization, syntactic CSDL model (`csdl::*`), resolver producing an Arc-graph semantic EDM model (`edm::*`), and a semantic validator. Maintained as an independent crate; integrated into this workspace at `crates/csdl-edm/`.
 - **`odata-rs-url`** — URL / query-string parser. Two public types:
   - `ODataQuery` — full parsed URL (resource path, path markers, system query options, custom options).
   - `QueryOptions` — the system-query-option subset a handler actually needs (`select`, `filter`, `expand`, `page`, `orderby`, `count`, `custom`). Built from `ODataQuery` or from a raw `?...` string.
-- **`odata-rs-service`** — axum-based router, handler contexts (`CollectionContext`, `EntityContext`, contained variants), and the builder API. Optionally exposes `odata_service::oquery` (sqlx/SQLite query builder) behind the `sqlx-sqlite` feature.
+- **`odata-rs-service`** — axum-based router, handler contexts (`CollectionContext`, `EntityContext`, contained variants), and the builder API. Internally projects the EDM model into a router-only working set (`schema_view`, crate-private) built from `csdl_edm::edm::Model`. The public builder accepts a `&csdl_edm::edm::Model` via `ODataServiceBuilder::new`, or accepts raw CSDL via the `from_csdl` convenience constructor (parse → resolve → project, one call). Re-exports `csdl_edm::{Error, Result}` for convenience. Optionally exposes `odata_service::oquery` (sqlx/SQLite query builder) behind the `sqlx-sqlite` feature.
 
-The umbrella crate `odata-rs` re-exports the three under matching features (`edm`, `url`, `service`, `sqlx-sqlite`, `full`).
+The umbrella crate `odata-rs` re-exports the three under matching features (`edm`, `url`, `service`, `sqlx-sqlite`, `full`). The `edm` feature re-exports `csdl_edm` as `odata_rs::edm`.
+
+See [AGENTS.md](AGENTS.md) for the rule that keeps the projection internal and built from the EDM model rather than from CSDL strings.
 
 ## Handler signatures and application state
 

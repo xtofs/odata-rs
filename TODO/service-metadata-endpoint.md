@@ -48,28 +48,28 @@ Concrete near-term work:
 
 ## Requirements for the canonical (option 3) path
 
-These are independent pieces, each worth its own TODO entry once started.
-Listing them here so the dependency graph is visible.
+These are independent pieces. The first four belong in `csdl-edm`; the last
+two are service-crate work that builds on top.
 
-1. **CSDL writer** — `Schema → String` (CSDL XML). Round-trip with the existing
-   reader on the example schemas; tests should parse, emit, re-parse, and
-   compare semantic models (not byte-for-byte XML, which would be brittle).
-2. **`Capabilities` vocabulary loading** — the reader currently drops
-   vocabulary `<Term>` declarations (see `term-definitions.md`). The
-   resolver needs to recognize at least the subset of
-   `Org.OData.Capabilities.V1` we want to emit annotations against.
+1. **CSDL writer** — `csdl_edm::serialization` already emits CSDL XML and
+   JSON (see `crates/csdl-edm/src/serialization.rs`). Confirm it covers the
+   round-trip cases we need before relying on it for `$metadata`.
+2. **`Capabilities` vocabulary loading** — `csdl-edm`'s coverage matrix lists
+   `Term` parse+serialize as done and resolver as partial. Confirm that the
+   subset of `Org.OData.Capabilities.V1` we want to emit against (
+   `UpdateRestrictions`, `DeleteRestrictions`, `InsertRestrictions`,
+   `ReadRestrictions`) resolves end-to-end.
 3. **`Annotation` reading on `EntitySet` / `Singleton` / `NavigationProperty`**
-   — verify the existing reader/builder paths populate annotations on these
-   container-level constructs. Today most work has been on `EntityType` /
-   `Property` annotations; the container-level ones matter here.
-4. **`Annotation` writing** — the CSDL writer must emit annotations,
-   including the inline-attribute form for constants. See the reader's
-   normalization rules (the writer is the inverse).
-5. **`CapabilityProfile` derivation** — a service-crate helper that consumes
+   — `csdl-edm`'s `csdl::EntitySet` already has `annotations: Vec<Annotation>`;
+   verify the resolver carries them through to the semantic-graph form.
+4. **`Annotation` writing** — included in (1), but worth verifying with a
+   round-trip test for inline-attribute constants on a Capabilities
+   annotation specifically.
+5. **`CapabilityProfile` derivation** (service crate) — a helper that consumes
    the `configs` map and yields a `Vec<Annotation>` per entity set / nav
    prop, populating `UpdateRestrictions { Updatable: false }` etc. for the
    gaps. This is the bridge from "what's registered" to "what to emit".
-6. **Composition** — at `$metadata` request time, splice the
+6. **Composition** (service crate) — at `$metadata` request time, splice the
    `CapabilityProfile` annotations into the served `Schema` and serialize
    via the writer. Decide once whether splicing happens at build time (cache
    the rendered bytes) or per request (always reflect current state) — for

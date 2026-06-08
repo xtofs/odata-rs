@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"
+           xmlns="http://docs.oasis-open.org/odata/ns/edm"
+           Version="4.01">
+    <edmx:Reference Uri="https://example.org/core.xml">
+        <edmx:Include Namespace="Org.OData.Core.V1"
+                      Alias="Core" />
+        <edmx:IncludeAnnotations TermNamespace="Org.OData.Core.V1" />
+        <edmx:IncludeAnnotations TermNamespace="Org.OData.Core.V1"
+                                 Qualifier="Tablet"
+                                 TargetNamespace="ExtrasDemo" />
+    </edmx:Reference>
+    <edmx:DataServices>
+        <Schema Namespace="ExtrasDemo"
+                Alias="self">
+            <Term Name="Length"
+                  Type="Edm.Decimal"
+                  AppliesTo="Property"
+                  Precision="8"
+                  Scale="2" />
+            <EntityType Name="Widget">
+                <Key>
+                    <PropertyRef Name="ID" />
+                </Key>
+                <Property Name="ID"
+                          Type="Edm.Int32"
+                          Nullable="false" />
+                <Property Name="Owner"
+                          Type="Edm.String"
+                          Nullable="false" />
+                <NavigationProperty Name="Parts"
+                                    Type="Collection(self.Part)"
+                                    Partner="Owner">
+                    <ReferentialConstraint Property="ID"
+                                           ReferencedProperty="OwnerID" />
+                    <Annotation Term="Core.Description"
+                                Target="ID"
+                                String="Widget→Part link" />
+                </NavigationProperty>
+            </EntityType>
+            <EntityType Name="Part">
+                <Key>
+                    <PropertyRef Name="ID" />
+                </Key>
+                <Property Name="ID"
+                          Type="Edm.Int32"
+                          Nullable="false" />
+                <Property Name="OwnerID"
+                          Type="Edm.Int32"
+                          Nullable="false" />
+                <NavigationProperty Name="Owner"
+                                    Type="self.Widget"
+                                    Nullable="false"
+                                    Partner="Parts" />
+            </EntityType>
+            <Function Name="WidgetsWithOwner"
+                      IsBound="false">
+                <Parameter Name="owner"
+                           Type="Edm.String"
+                           Nullable="false"
+                           MaxLength="64"
+                           DefaultValue="anon">
+                    <Annotation Term="Core.Description"
+                                String="Owner to filter by" />
+                </Parameter>
+                <ReturnType Type="Collection(self.Widget)"
+                            Nullable="false">
+                    <Annotation Term="Core.Description"
+                                String="Matching widgets" />
+                </ReturnType>
+            </Function>
+            <EntityContainer Name="Service">
+                <Singleton Name="DefaultWidget"
+                           Type="self.Widget"
+                           IncludeInServiceDocument="false" />
+            </EntityContainer>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>

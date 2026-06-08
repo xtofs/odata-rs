@@ -1,0 +1,86 @@
+{
+  "$Version": "4.01",
+  "$EntityContainer": "FieldsDemo.Service",
+  "FieldsDemo": {
+    "$Alias": "self",
+    "Base": {
+      "$Kind": "ComplexType",
+      "$Abstract": true,
+      "$OpenType": true
+    },
+    "Derived": {
+      "$Kind": "ComplexType",
+      "$BaseType": "self.Base",
+      "Note": {
+        "$Type": "Edm.String",
+        "$Nullable": true,
+        "$MaxLength": 80,
+        "$Unicode": false,
+        "$DefaultValue": "-"
+      }
+    },
+    "Animal": {
+      "$Kind": "EntityType",
+      "$Abstract": true,
+      "$Key": ["ID"],
+      "ID": { "$Type": "Edm.Int32", "$Nullable": false },
+      "Weight": { "$Type": "Edm.Decimal", "$Nullable": false, "$Precision": 6, "$Scale": 2 }
+    },
+    "Dog": {
+      "$Kind": "EntityType",
+      "$BaseType": "self.Animal",
+      "Breed": { "$Type": "Edm.String", "$Nullable": false, "$DefaultValue": "mutt" },
+      "Owner": {
+        "$Kind": "NavigationProperty",
+        "$Type": "self.Person",
+        "$Nullable": false,
+        "$ContainsTarget": true
+      }
+    },
+    "Person": {
+      "$Kind": "EntityType",
+      "$Key": ["ID"],
+      "ID": { "$Type": "Edm.Int32", "$Nullable": false }
+    },
+    "DogsByBreed": [
+      {
+        "$Kind": "Function",
+        "$IsBound": true,
+        "$IsComposable": true,
+        "$Parameter": [
+          { "$Name": "bindingParameter", "$Collection": true, "$Type": "self.Dog" },
+          { "$Name": "breed", "$Type": "Edm.String", "$Nullable": false, "$MaxLength": 50 }
+        ],
+        "$ReturnType": { "$Collection": true, "$Type": "self.Dog" }
+      }
+    ],
+    "Adopt": [
+      {
+        "$Kind": "Action",
+        "$IsBound": true,
+        "$EntitySetPath": "bindingParameter/Owner",
+        "$Parameter": [
+          { "$Name": "bindingParameter", "$Type": "self.Dog" },
+          { "$Name": "newOwner", "$Type": "self.Person" }
+        ]
+      }
+    ],
+    "Service": {
+      "$Kind": "EntityContainer",
+      "$Extends": "FieldsDemo.BaseService",
+      "Dogs": {
+        "$Collection": true,
+        "$Type": "self.Dog",
+        "$IncludeInServiceDocument": false
+      },
+      "People": {
+        "$Collection": true,
+        "$Type": "self.Person"
+      },
+      "AllDogs": {
+        "$Function": "FieldsDemo.DogsByBreed",
+        "$IncludeInServiceDocument": true
+      }
+    }
+  }
+}

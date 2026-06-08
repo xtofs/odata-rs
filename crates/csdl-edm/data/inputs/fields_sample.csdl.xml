@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm" Version="4.01">
+    <edmx:DataServices>
+        <Schema Namespace="FieldsDemo">
+            <ComplexType Name="Base" Abstract="true" OpenType="true"/>
+            <ComplexType Name="Derived" BaseType="FieldsDemo.Base">
+                <Property Name="Note" Type="Edm.String" Nullable="true" DefaultValue="-" MaxLength="80" Unicode="false"/>
+            </ComplexType>
+            <EntityType Name="Animal" Abstract="true">
+                <Key>
+                    <PropertyRef Name="ID"/>
+                </Key>
+                <Property Name="ID" Type="Edm.Int32" Nullable="false"/>
+                <Property Name="Weight" Type="Edm.Decimal" Nullable="false" Precision="6" Scale="2"/>
+            </EntityType>
+            <EntityType Name="Dog" BaseType="FieldsDemo.Animal">
+                <Property Name="Breed" Type="Edm.String" Nullable="false" DefaultValue="mutt"/>
+                <NavigationProperty Name="Owner" Type="FieldsDemo.Person" Nullable="false" ContainsTarget="true"/>
+            </EntityType>
+            <EntityType Name="Person">
+                <Key><PropertyRef Name="ID"/></Key>
+                <Property Name="ID" Type="Edm.Int32" Nullable="false"/>
+            </EntityType>
+            <Function Name="DogsByBreed" IsBound="true" IsComposable="true">
+                <Parameter Name="bindingParameter" Type="Collection(FieldsDemo.Dog)"/>
+                <Parameter Name="breed" Type="Edm.String" Nullable="false" MaxLength="50"/>
+                <ReturnType Type="Collection(FieldsDemo.Dog)"/>
+            </Function>
+            <Action Name="Adopt" IsBound="true" EntitySetPath="bindingParameter/Owner">
+                <Parameter Name="bindingParameter" Type="FieldsDemo.Dog"/>
+                <Parameter Name="newOwner" Type="FieldsDemo.Person"/>
+            </Action>
+            <EntityContainer Name="Service" Extends="FieldsDemo.BaseService">
+                <EntitySet Name="Dogs" EntityType="FieldsDemo.Dog" IncludeInServiceDocument="false"/>
+                <EntitySet Name="People" EntityType="FieldsDemo.Person"/>
+                <FunctionImport Name="AllDogs" Function="FieldsDemo.DogsByBreed" IncludeInServiceDocument="true"/>
+            </EntityContainer>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>

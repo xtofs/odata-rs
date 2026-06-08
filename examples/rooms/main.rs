@@ -26,7 +26,6 @@ use serde::{Deserialize, Serialize};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::{FromRow, SqlitePool};
 
-use odata_edm::Schema;
 use odata_service::{
     CollectionContext, ContainedCollectionContext, ContainedEntityContext, EntityContext,
     ODataServiceBuilder,
@@ -51,12 +50,14 @@ async fn main() {
 
     init_tracing();
 
-    let schema: Schema = load_schema().expect("cannot parse rooms.csdl.xml into a service schema");
+    let csdl = load_csdl().expect("cannot read rooms.csdl.xml");
+    let builder = ODataServiceBuilder::from_csdl(&csdl)
+        .expect("cannot parse rooms.csdl.xml into a service schema");
 
     #[cfg(debug_assertions)]
-    write_scaffold(&schema);
+    write_scaffold(&builder);
 
-    let service = ODataServiceBuilder::new(schema)
+    let service = builder
         .with_state(state)
         .entity_set("rooms", |es| {
             es.list(list_rooms)
@@ -324,34 +325,26 @@ fn rooms_csdl_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/rooms/rooms.csdl.xml")
 }
 
-fn load_schema() -> odata_edm::Result<Schema> {
-    let path = rooms_csdl_path();
-    let csdl = fs::read_to_string(&path).map_err(|error| {
-        odata_edm::Error::Csdl(format!(
-            "failed to read CSDL file '{}': {error}",
-            path.display()
-        ))
-    })?;
-
-    Schema::from_csdl(&csdl)
+fn load_csdl() -> std::io::Result<String> {
+    fs::read_to_string(rooms_csdl_path())
 }
 
 // Development aid: in debug builds, write a stub-handler file for the
 // current schema to `target/scaffold.rs`. Useful when starting a new
 // service or adapting to a schema change — copy the bits you need.
 #[cfg(debug_assertions)]
-fn write_scaffold(schema: &Schema) {
-    {
-        use odata_service::scaffold::Scaffold;
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/scaffold.rs");
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        if let Err(e) = std::fs::write(&path, schema.scaffold()) {
-            tracing::warn!("failed to write scaffold to {}: {e}", path.display());
-        } else {
-            tracing::info!("wrote scaffold to {}", path.display());
-        }
+fn write_scaffold<S>(builder: &ODataServiceBuilder<S>)
+where
+    S: Clone + Send + Sync + 'static,
+{
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/scaffold.rs");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(&path, builder.scaffold()) {
+        tracing::warn!("failed to write scaffold to {}: {e}", path.display());
+    } else {
+        tracing::info!("wrote scaffold to {}", path.display());
     }
 }
 

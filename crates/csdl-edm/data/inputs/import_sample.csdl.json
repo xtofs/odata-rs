@@ -1,0 +1,27 @@
+{
+  "$Version": "4.01",
+  "$EntityContainer": "ImportDemo.DemoService",
+  "ImportDemo": {
+    "$Alias": "self",
+    "ResetAll": [
+      {
+        "$Kind": "Action"
+      }
+    ],
+    "SetMaintenance": [
+      {
+        "$Kind": "Action"
+      }
+    ],
+    "DemoService": {
+      "$Kind": "EntityContainer",
+      "ResetAllImport": {
+        "$Action": "ImportDemo.ResetAll"
+      },
+      "MaintenanceMode": {
+        "$Action": "ImportDemo.SetMaintenance",
+        "$EntitySet": "Maintenance"
+      }
+    }
+  }
+}

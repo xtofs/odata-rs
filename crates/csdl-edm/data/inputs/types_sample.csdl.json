@@ -1,0 +1,56 @@
+{
+  "$Version": "4.01",
+  "TypesDemo": {
+    "$Alias": "self",
+    "Weight": {
+      "$Kind": "TypeDefinition",
+      "$UnderlyingType": "Edm.Decimal",
+      "$Precision": 8,
+      "$Scale": 2
+    },
+    "ShortText": {
+      "$Kind": "TypeDefinition",
+      "$UnderlyingType": "Edm.String",
+      "$MaxLength": 50,
+      "$Unicode": false,
+      "@Core.Description": "50-char ASCII"
+    },
+    "IsURL": {
+      "$Kind": "Term",
+      "$Type": "Edm.String",
+      "$AppliesTo": ["Property", "Term"],
+      "$DefaultValue": "false"
+    },
+    "Description": {
+      "$Kind": "Term",
+      "$Type": "Edm.String",
+      "$Nullable": true,
+      "$AppliesTo": ["Property", "EntitySet"]
+    },
+    "ResetCounter": [
+      {
+        "$Kind": "Action",
+        "$Parameter": [
+          { "$Name": "binding", "$Type": "self.Counter" }
+        ]
+      },
+      {
+        "$Kind": "Action",
+        "$Parameter": [
+          { "$Name": "binding", "$Type": "self.Counter" },
+          { "$Name": "newValue", "$Type": "Edm.Int32" }
+        ]
+      }
+    ],
+    "Multiply": [
+      {
+        "$Kind": "Function",
+        "$Parameter": [
+          { "$Name": "left", "$Type": "Edm.Decimal" },
+          { "$Name": "right", "$Type": "Edm.Decimal" }
+        ],
+        "$ReturnType": { "$Type": "Edm.Decimal" }
+      }
+    ]
+  }
+}

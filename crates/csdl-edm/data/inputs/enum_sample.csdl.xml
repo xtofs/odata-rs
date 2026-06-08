@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm" Version="4.01">
+    <edmx:DataServices>
+        <Schema Namespace="EnumDemo">
+            <EnumType Name="Color">
+                <Member Name="Red" Value="1"/>
+                <Member Name="Green" Value="2"/>
+                <Member Name="Blue" Value="4"/>
+                <Annotation Term="Core.Description" Target="Blue" String="primary blue"/>
+            </EnumType>
+            <EnumType Name="Permissions" UnderlyingType="Edm.Int64" IsFlags="true">
+                <Member Name="None" Value="0"/>
+                <Member Name="Read" Value="1"/>
+                <Member Name="Write" Value="2"/>
+                <Member Name="ReadWrite" Value="3"/>
+            </EnumType>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>

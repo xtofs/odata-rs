@@ -1,0 +1,21 @@
+{
+  "$Version": "4.01",
+  "EnumDemo": {
+    "Color": {
+      "$Kind": "EnumType",
+      "Red": 1,
+      "Green": 2,
+      "Blue": 4,
+      "Blue@Core.Description": "primary blue"
+    },
+    "Permissions": {
+      "$Kind": "EnumType",
+      "$UnderlyingType": "Edm.Int64",
+      "$IsFlags": true,
+      "None": 0,
+      "Read": 1,
+      "Write": 2,
+      "ReadWrite": 3
+    }
+  }
+}

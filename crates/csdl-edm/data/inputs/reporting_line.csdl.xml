@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"
+           xmlns="http://docs.oasis-open.org/odata/ns/edm"
+           Version="4.0">
+    <edmx:DataServices>
+        <Schema Namespace="HRDemo"
+                Alias="self">
+            <EntityType Name="ReportingLine">
+                <Key>
+                    <PropertyRef Name="Employee/ID"
+                                 Alias="EmployeeID" />
+                    <PropertyRef Name="Manager/ID"
+                                 Alias="ManagerID" />
+                </Key>
+                <!-- "Employee" and "Manager" are both of the same ComplexType -->
+                <Property Name="Employee"
+                          Type="self.EmployeeInfo"
+                          Nullable="false" />
+                <Property Name="Manager"
+                          Type="self.EmployeeInfo"
+                          Nullable="false" />
+            </EntityType>
+            <EntityContainer Name="HRService">
+                <EntitySet Name="Employees"
+                           EntityType="self.Employee">
+                    <NavigationPropertyBinding Path="Manager"
+                                               Target="Employees" />
+                    <NavigationPropertyBinding Path="DirectReports"
+                                               Target="Employees" />
+                </EntitySet>
+                <EntitySet Name="ReportingLines"
+                           EntityType="self.ReportingLine" />
+            </EntityContainer>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>

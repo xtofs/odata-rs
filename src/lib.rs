@@ -1,5 +1,5 @@
 #[cfg(feature = "edm")]
-pub use odata_edm as edm;
+pub use csdl_edm as edm;
 
 #[cfg(feature = "url")]
 pub use odata_url as url;

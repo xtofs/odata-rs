@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" xmlns="http://docs.oasis-open.org/odata/ns/edm" Version="4.01">
+    <edmx:DataServices>
+        <Schema Namespace="TypesDemo">
+            <TypeDefinition Name="Weight" UnderlyingType="Edm.Decimal" Precision="8" Scale="2"/>
+            <TypeDefinition Name="ShortText" UnderlyingType="Edm.String" MaxLength="50" Unicode="false">
+                <Annotation Term="Core.Description" String="50-char ASCII"/>
+            </TypeDefinition>
+            <Term Name="IsURL" Type="Edm.String" AppliesTo="Property Term" DefaultValue="false"/>
+            <Term Name="Description" Type="Edm.String" AppliesTo="Property EntitySet" Nullable="true"/>
+            <Action Name="ResetCounter">
+                <Parameter Name="binding" Type="TypesDemo.Counter"/>
+            </Action>
+            <Action Name="ResetCounter">
+                <Parameter Name="binding" Type="TypesDemo.Counter"/>
+                <Parameter Name="newValue" Type="Edm.Int32"/>
+            </Action>
+            <Function Name="Multiply">
+                <Parameter Name="left" Type="Edm.Decimal"/>
+                <Parameter Name="right" Type="Edm.Decimal"/>
+                <ReturnType Type="Edm.Decimal"/>
+            </Function>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>

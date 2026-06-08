@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"
+           xmlns="http://docs.oasis-open.org/odata/ns/edm"
+           Version="4.01">
+    <edmx:DataServices>
+        <Schema Namespace="ImportDemo">
+            <Action Name="ResetAll" />
+            <Action Name="SetMaintenance" />
+            <EntityContainer Name="DemoService">
+                <ActionImport Name="ResetAllImport"
+                              Action="ImportDemo.ResetAll" />
+                <ActionImport Name="MaintenanceMode"
+                              Action="ImportDemo.SetMaintenance"
+                              EntitySet="Maintenance" />
+            </EntityContainer>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>

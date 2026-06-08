@@ -1,0 +1,19 @@
+{
+  "$Version": "4.01",
+  "RecordDemo": {
+    "Book": {
+      "$Kind": "EntityType",
+      "$Key": ["ISBN"],
+      "ISBN": { "$Nullable": false },
+      "Title": {
+        "$Nullable": false,
+        "@UI.Importance": {
+          "@Core.Description": "Importance hint",
+          "Level": "High",
+          "Level@Core.Description": "The importance level",
+          "Weight": 10
+        }
+      }
+    }
+  }
+}

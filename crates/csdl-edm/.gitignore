@@ -1,0 +1,13 @@
+# Cargo build artifacts
+/target/
+
+# Rust backup files from rustfmt
+**/*.rs.bk
+
+# macOS
+.DS_Store
+
+
+# Round-trip outputs are regenerated on every `cargo run -p bin`
+data/outputs/
+

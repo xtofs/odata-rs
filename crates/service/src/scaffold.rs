@@ -1,4 +1,4 @@
-//! Generate a stub-handler source file from an [`odata_edm::Schema`].
+//! Generate a stub-handler source file from a configured service builder.
 //!
 //! Intended as a development-time aid: emit a compilable Rust file containing
 //! one async handler per (entity-set × verb) and per (entity-set × contained-
@@ -9,39 +9,30 @@
 //! Typical use, from a service's `main()`:
 //!
 //! ```ignore
-//! use odata_service::scaffold::Scaffold;
-//!
+//! let builder = ODataServiceBuilder::from_csdl(csdl)?;
 //! #[cfg(debug_assertions)]
-//! std::fs::write("target/scaffold.rs", schema.scaffold()).unwrap();
+//! std::fs::write("target/scaffold.rs", builder.scaffold()).unwrap();
+//! let app = builder.with_state(pool).entity_set(...).build();
 //! ```
 //!
-//! The output references `odata_service` and `axum` types by name. It does
-//! not depend on the `odata-rs-edm` crate having any knowledge of the service
-//! layer — the codegen lives here, where the handler signatures live.
+//! The output references `odata_service` and `axum` types by name. The
+//! codegen lives here, where the handler signatures live — `csdl-edm` has
+//! no knowledge of the service layer.
 
 use std::fmt::Write;
 
-use odata_edm::Schema;
+use crate::schema_view::Schema;
 
-/// Extension trait that adds [`Scaffold::scaffold`] to [`Schema`].
-pub trait Scaffold {
-    /// Render a compilable Rust source file with stub handlers and a
-    /// registration function covering every entity set and contained
-    /// navigation property in `self`. State is rendered as the unit type
-    /// `()`; adapt by find-and-replace if your service is stateful.
-    fn scaffold(&self) -> String;
-}
-
-impl Scaffold for Schema {
-    fn scaffold(&self) -> String {
-        let mut out = String::new();
-        emit_header(&mut out, self);
-        for es in self.entity_sets() {
-            emit_entity_set_handlers(&mut out, self, es);
-        }
-        emit_register(&mut out, self);
-        out
+/// Render the scaffold source for `schema`. Crate-private; the public entry
+/// point is [`crate::ODataServiceBuilder::scaffold`].
+pub(crate) fn render(schema: &Schema) -> String {
+    let mut out = String::new();
+    emit_header(&mut out, schema);
+    for es in schema.entity_sets() {
+        emit_entity_set_handlers(&mut out, schema, es);
     }
+    emit_register(&mut out, schema);
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +62,7 @@ fn emit_header(out: &mut String, schema: &Schema) {
     writeln!(out).unwrap();
 }
 
-fn emit_entity_set_handlers(out: &mut String, schema: &Schema, es: &odata_edm::EntitySet) {
+fn emit_entity_set_handlers(out: &mut String, schema: &Schema, es: &crate::schema_view::EntitySet) {
     let set = &es.name;
     let type_name = &es.entity_type_name;
     let entity = singularize(set);
@@ -265,15 +256,19 @@ mod tests {
     use super::*;
 
     const CSDL: &str = r#"
-        <Schema Namespace="BuildingManagement" xmlns="http://docs.oasis-open.org/odata/ns/edm">
-            <EntityType Name="Printer" />
-            <EntityType Name="Room">
-                <NavigationProperty Name="Printers" Type="Collection(BuildingManagement.Printer)" ContainsTarget="true" />
-            </EntityType>
-            <EntityContainer Name="Container">
-                <EntitySet Name="Rooms" EntityType="BuildingManagement.Room" />
-            </EntityContainer>
-        </Schema>
+        <edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+          <edmx:DataServices>
+            <Schema Namespace="BuildingManagement" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+                <EntityType Name="Printer" />
+                <EntityType Name="Room">
+                    <NavigationProperty Name="Printers" Type="Collection(BuildingManagement.Printer)" ContainsTarget="true" />
+                </EntityType>
+                <EntityContainer Name="Container">
+                    <EntitySet Name="Rooms" EntityType="BuildingManagement.Room" />
+                </EntityContainer>
+            </Schema>
+          </edmx:DataServices>
+        </edmx:Edmx>
         "#;
 
     #[test]
@@ -296,8 +291,8 @@ mod tests {
 
     #[test]
     fn scaffold_contains_expected_handlers_and_registration() {
-        let schema = Schema::from_csdl(CSDL).expect("csdl should parse");
-        let src = schema.scaffold();
+        let builder = crate::ODataServiceBuilder::from_csdl(CSDL).expect("csdl should parse");
+        let src = builder.scaffold();
 
         // Entity-set verbs
         for needle in [

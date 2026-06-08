@@ -10,7 +10,7 @@ use axum::{
 };
 use serde_json::Value as JsonValue;
 
-use odata_edm::Schema;
+use crate::schema_view::Schema;
 use odata_url::QueryOptions;
 
 use super::config::{ContainedNavConfig, EntitySetConfig};
@@ -53,12 +53,46 @@ pub struct ODataServiceBuilder<S = ()> {
 }
 
 impl ODataServiceBuilder<()> {
-    pub fn new(schema: Schema) -> Self {
+    /// Build a stateless service from a resolved EDM model. The router
+    /// derives its internal view by walking the model's entity container —
+    /// see `crate::schema_view`. The caller retains ownership of the model;
+    /// only the router-relevant slice is copied.
+    pub fn new(model: &csdl_edm::edm::Model) -> Self {
         Self {
-            schema: Arc::new(schema),
+            schema: Arc::new(Schema::from_model(model)),
             state: (),
             configs: HashMap::new(),
         }
+    }
+
+    /// Parse, resolve, and project CSDL XML in one shot. Convenience for
+    /// services whose schema is a static CSDL document.
+    ///
+    /// Equivalent to:
+    /// ```ignore
+    /// let document = csdl_edm::parser::from_xml_reader(csdl.as_bytes())?;
+    /// let edmx = document.edmx.ok_or(...)?;
+    /// let document_model = csdl_edm::resolver::Resolver::resolve_document(edmx)?;
+    /// let model = document_model.schemas.first()?.clone();
+    /// ODataServiceBuilder::new(&model)
+    /// ```
+    pub fn from_csdl(csdl: &str) -> crate::Result<Self> {
+        use csdl_edm::resolver::Resolver;
+
+        let document = csdl_edm::parser::from_xml_reader(csdl.as_bytes())
+            .map_err(|err| crate::Error::Csdl(format!("failed to parse CSDL: {err}")))?;
+        let edmx = document
+            .edmx
+            .ok_or_else(|| crate::Error::Csdl("CSDL document has no <edmx:Edmx> root".to_string()))?;
+        let document_model = Resolver::resolve_document(edmx).map_err(|err| {
+            crate::Error::Csdl(format!("failed to resolve CSDL: {err:?}"))
+        })?;
+        let model = document_model
+            .schemas
+            .first()
+            .cloned()
+            .ok_or_else(|| crate::Error::Csdl("CSDL document has no <Schema>".to_string()))?;
+        Ok(Self::new(&model))
     }
 
     /// Attach a state value that every handler will receive as its second
@@ -101,6 +135,12 @@ where
         self.configs
             .insert(name.to_string(), f(EntitySetConfig::default()));
         self
+    }
+
+    /// Render a stub-handler source file for the schema this builder was
+    /// constructed with. Development aid; see [`crate::scaffold`].
+    pub fn scaffold(&self) -> String {
+        crate::scaffold::render(&self.schema)
     }
 
     /// Validate registrations against the schema, warn on gaps, then build the
@@ -550,7 +590,7 @@ where
 /// when the schema model grows. `kind` and `url` are emitted explicitly even
 /// where the spec would allow defaulting, because most consumers — including
 /// the .NET reference client — expect them present.
-fn build_service_document(schema: &odata_edm::Schema) -> JsonValue {
+fn build_service_document(schema: &Schema) -> JsonValue {
     let entries: Vec<JsonValue> = schema
         .entity_sets()
         .map(|es| {
@@ -662,7 +702,6 @@ fn warn_contained_gaps<S>(es_name: &str, nav_name: &str, config: &ContainedNavCo
 #[cfg(test)]
 mod tests {
     use axum::{body::Body, http::Request};
-    use odata_edm::{EntitySet, EntityType, NavigationProperty, Schema};
     use tower::ServiceExt;
 
     use super::ODataServiceBuilder;
@@ -751,20 +790,32 @@ mod tests {
         );
     }
 
-    fn schema_with_rooms_and_printers() -> Schema {
-        let mut schema = Schema::new("BuildingManagement");
-        schema.add_entity_type(EntityType::new("Printer"));
-        schema.add_entity_type(
-            EntityType::new("Room")
-                .with_nav_prop(NavigationProperty::new("Printers", "Printer").contained()),
-        );
-        schema.add_entity_set(EntitySet::new("Rooms", "Room"));
-        schema
-    }
+    /// Minimal CSDL fixture for tests. Resolves into an EDM model with one
+    /// EntityContainer / EntitySet "Rooms" → "Room" and a single contained
+    /// nav prop "Printers" on Room.
+    const ROOMS_CSDL: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+          <edmx:DataServices>
+            <Schema Namespace="Bm" xmlns="http://docs.oasis-open.org/odata/ns/edm">
+              <EntityType Name="Printer">
+                <Key><PropertyRef Name="Id" /></Key>
+                <Property Name="Id" Type="Edm.String" Nullable="false" />
+              </EntityType>
+              <EntityType Name="Room">
+                <Key><PropertyRef Name="Id" /></Key>
+                <Property Name="Id" Type="Edm.String" Nullable="false" />
+                <NavigationProperty Name="Printers" Type="Collection(Bm.Printer)" ContainsTarget="true" />
+              </EntityType>
+              <EntityContainer Name="C">
+                <EntitySet Name="Rooms" EntityType="Bm.Room" />
+              </EntityContainer>
+            </Schema>
+          </edmx:DataServices>
+        </edmx:Edmx>"#;
 
     #[test]
     fn detects_unimplemented_entity_sets_from_schema() {
-        let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers());
+        let builder = ODataServiceBuilder::from_csdl(ROOMS_CSDL).expect("csdl");
         assert_eq!(
             builder.unimplemented_entity_sets(),
             vec!["Rooms".to_string()]
@@ -773,7 +824,8 @@ mod tests {
 
     #[test]
     fn detects_unimplemented_contained_collections_from_schema() {
-        let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers())
+        let builder = ODataServiceBuilder::from_csdl(ROOMS_CSDL)
+            .expect("csdl")
             .entity_set("Rooms", |es| es.list(|_, _: ()| async { "ok" }));
 
         assert_eq!(
@@ -784,7 +836,8 @@ mod tests {
 
     #[test]
     fn does_not_mark_registered_contained_collection_as_missing() {
-        let builder = ODataServiceBuilder::new(schema_with_rooms_and_printers())
+        let builder = ODataServiceBuilder::from_csdl(ROOMS_CSDL)
+            .expect("csdl")
             .entity_set("Rooms", |es| {
                 es.contained("Printers", |nav| nav.list(|_, _: ()| async { "ok" }))
             });
@@ -796,7 +849,7 @@ mod tests {
     async fn service_document_lists_entity_sets() {
         use axum::body::to_bytes;
 
-        let router = ODataServiceBuilder::new(schema_with_rooms_and_printers()).build();
+        let router = ODataServiceBuilder::from_csdl(ROOMS_CSDL).expect("csdl").build();
         let response = router
             .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
             .await

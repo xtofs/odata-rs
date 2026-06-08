@@ -1,0 +1,37 @@
+{
+  "$Version": "4.0",
+  "HRDemo": {
+    "$Alias": "self",
+    "ReportingLine": {
+      "$Kind": "EntityType",
+      "$Key": [
+        "Employee/ID",
+        "Manager/ID"
+      ],
+      "Employee": {
+        "$Type": "self.EmployeeInfo",
+        "$Nullable": false
+      },
+      "Manager": {
+        "$Type": "self.EmployeeInfo",
+        "$Nullable": false
+      }
+    },
+    "HRService": {
+      "$Kind": "EntityContainer",
+      "Employees": {
+        "$Collection": true,
+        "$Type": "self.Employee",
+        "$NavigationPropertyBinding": {
+          "Manager": "Employees",
+          "DirectReports": "Employees"
+        }
+      },
+      "ReportingLines": {
+        "$Collection": true,
+        "$Type": "self.ReportingLine"
+      }
+    }
+  },
+  "$EntityContainer": ".HRService"
+}

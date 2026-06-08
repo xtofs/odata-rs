@@ -1,0 +1,82 @@
+{
+  "$Version": "4.01",
+  "$EntityContainer": "ExtrasDemo.Service",
+  "$Reference": {
+    "https://example.org/core.xml": {
+      "$Include": [
+        { "$Namespace": "Org.OData.Core.V1", "$Alias": "Core" }
+      ],
+      "$IncludeAnnotations": [
+        { "$TermNamespace": "Org.OData.Core.V1" },
+        { "$TermNamespace": "Org.OData.Core.V1", "$Qualifier": "Tablet", "$TargetNamespace": "ExtrasDemo" }
+      ]
+    }
+  },
+  "ExtrasDemo": {
+    "$Alias": "self",
+    "Length": {
+      "$Kind": "Term",
+      "$Type": "Edm.Decimal",
+      "$AppliesTo": ["Property"],
+      "$Precision": 8,
+      "$Scale": 2
+    },
+    "Widget": {
+      "$Kind": "EntityType",
+      "$Key": ["ID"],
+      "ID": { "$Type": "Edm.Int32", "$Nullable": false },
+      "Owner": { "$Type": "Edm.String", "$Nullable": false },
+      "Parts": {
+        "$Kind": "NavigationProperty",
+        "$Collection": true,
+        "$Type": "self.Part",
+        "$Partner": "Owner",
+        "$ReferentialConstraint": {
+          "ID": "OwnerID",
+          "ID@Core.Description": "Widget→Part link"
+        }
+      }
+    },
+    "Part": {
+      "$Kind": "EntityType",
+      "$Key": ["ID"],
+      "ID": { "$Type": "Edm.Int32", "$Nullable": false },
+      "OwnerID": { "$Type": "Edm.Int32", "$Nullable": false },
+      "Owner": {
+        "$Kind": "NavigationProperty",
+        "$Type": "self.Widget",
+        "$Nullable": false,
+        "$Partner": "Parts"
+      }
+    },
+    "WidgetsWithOwner": [
+      {
+        "$Kind": "Function",
+        "$IsBound": false,
+        "$Parameter": [
+          {
+            "$Name": "owner",
+            "$Type": "Edm.String",
+            "$Nullable": false,
+            "$MaxLength": 64,
+            "$DefaultValue": "anon",
+            "@Core.Description": "Owner to filter by"
+          }
+        ],
+        "$ReturnType": {
+          "$Collection": true,
+          "$Type": "self.Widget",
+          "$Nullable": false,
+          "@Core.Description": "Matching widgets"
+        }
+      }
+    ],
+    "Service": {
+      "$Kind": "EntityContainer",
+      "DefaultWidget": {
+        "$Type": "self.Widget",
+        "$IncludeInServiceDocument": false
+      }
+    }
+  }
+}

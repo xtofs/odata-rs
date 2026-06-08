@@ -1,51 +1,56 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Schema Namespace="BuildingManagement"
-        Alias="Bm"
-        xmlns="http://docs.oasis-open.org/odata/ns/edm">
-    <EntityType Name="printer">
-        <Key>
-            <PropertyRef Name="id" />
-        </Key>
-        <Property Name="id"
-                  Type="Edm.String"
-                  Nullable="false" />
-        <Property Name="model"
-                  Type="Edm.String"
-                  Nullable="false" />
-    </EntityType>
-    <EntityType Name="phone">
-        <Key>
-            <PropertyRef Name="id" />
-        </Key>
-        <Property Name="id"
-                  Type="Edm.String"
-                  Nullable="false" />
-        <Property Name="model"
-                  Type="Edm.String"
-                  Nullable="false" />
-        <Property Name="number"
-                  Type="Edm.String"
-                  Nullable="false" />
-    </EntityType>
-    <EntityType Name="room">
-        <Key>
-            <PropertyRef Name="id" />
-        </Key>
-        <Property Name="id"
-                  Type="Edm.String"
-                  Nullable="false" />
-        <Property Name="name"
-                  Type="Edm.String"
-                  Nullable="false" />
-        <NavigationProperty Name="printers"
-                            Type="Collection(BuildingManagement.printer)"
-                            ContainsTarget="true" />
-        <NavigationProperty Name="phones"
-                            Type="Collection(BuildingManagement.phone)"
-                            ContainsTarget="true" />
-    </EntityType>
-    <EntityContainer Name="Container">
-        <EntitySet Name="rooms"
-                   EntityType="BuildingManagement.room" />
-    </EntityContainer>
-</Schema>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"
+           Version="4.0">
+    <edmx:DataServices>
+        <Schema Namespace="BuildingManagement"
+                Alias="Bm"
+                xmlns="http://docs.oasis-open.org/odata/ns/edm">
+            <EntityType Name="printer">
+                <Key>
+                    <PropertyRef Name="id" />
+                </Key>
+                <Property Name="id"
+                          Type="Edm.String"
+                          Nullable="false" />
+                <Property Name="model"
+                          Type="Edm.String"
+                          Nullable="false" />
+            </EntityType>
+            <EntityType Name="phone">
+                <Key>
+                    <PropertyRef Name="id" />
+                </Key>
+                <Property Name="id"
+                          Type="Edm.String"
+                          Nullable="false" />
+                <Property Name="model"
+                          Type="Edm.String"
+                          Nullable="false" />
+                <Property Name="number"
+                          Type="Edm.String"
+                          Nullable="false" />
+            </EntityType>
+            <EntityType Name="room">
+                <Key>
+                    <PropertyRef Name="id" />
+                </Key>
+                <Property Name="id"
+                          Type="Edm.String"
+                          Nullable="false" />
+                <Property Name="name"
+                          Type="Edm.String"
+                          Nullable="false" />
+                <NavigationProperty Name="printers"
+                                    Type="Collection(BuildingManagement.printer)"
+                                    ContainsTarget="true" />
+                <NavigationProperty Name="phones"
+                                    Type="Collection(BuildingManagement.phone)"
+                                    ContainsTarget="true" />
+            </EntityType>
+            <EntityContainer Name="Container">
+                <EntitySet Name="rooms"
+                           EntityType="BuildingManagement.room" />
+            </EntityContainer>
+        </Schema>
+    </edmx:DataServices>
+</edmx:Edmx>
