@@ -43,6 +43,16 @@ Attribute classes:
 - value: scalar/structured data with no symbolic linking
 - reference: symbolic name/path requiring resolution
 
+Attribute entry format in this document:
+
+- value attribute: Name: required|optional value <type>
+- reference attribute: Name: required|optional reference <target>
+
+Path semantics notes:
+
+- Some reference/value attributes carry path syntax rather than a simple name.
+- Unless stated otherwise, path-valued attributes are relative to their local model context.
+
 Cardinality notation:
 
 - 1 exactly one
@@ -67,7 +77,7 @@ Reference target kinds:
   - [Reference](#element-reference) (0..\*)
   - [DataServices](#element-dataservices) (1)
 - Attributes:
-  - Version: String (value, required)
+  - Version: required value String
 
 <a id="element-reference"></a>
 
@@ -79,7 +89,7 @@ Reference target kinds:
   - [IncludeAnnotations](#element-includeannotations) (0..\*)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Uri: String (value, required)
+  - Uri: required value String
 
 <a id="element-include"></a>
 
@@ -88,8 +98,8 @@ Reference target kinds:
 - Parent: [Reference](#element-reference)
 - Children: none
 - Attributes:
-  - Namespace: String (value, required)
-  - Alias: String (value, optional)
+  - Namespace: required value String
+  - Alias: optional value String
 
 <a id="element-includeannotations"></a>
 
@@ -98,9 +108,9 @@ Reference target kinds:
 - Parent: [Reference](#element-reference)
 - Children: none
 - Attributes:
-  - TermNamespace: String (value, required)
-  - TargetNamespace: String (value, optional)
-  - Qualifier: String (value, optional)
+  - TermNamespace: required value String
+  - TargetNamespace: optional value String
+  - Qualifier: optional value String
 
 <a id="element-dataservices"></a>
 
@@ -129,8 +139,8 @@ Reference target kinds:
   - [EntityContainer](#element-entitycontainer) (0..1)
   - [Annotations](#element-annotations) (0..\*)
 - Attributes:
-  - Namespace: String (value, required)
-  - Alias: String (value, optional)
+  - Namespace: required value String
+  - Alias: optional value String
 
 ## 3. Type Elements
 
@@ -145,11 +155,11 @@ Reference target kinds:
   - [NavigationProperty](#element-navigationproperty) (0..\*)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - BaseType: String (reference, optional) [EntityType](#element-entitytype)
-  - Abstract: bool (value, optional)
-  - OpenType: bool (value, optional)
-  - HasStream: bool (value, optional)
+  - Name: required value String
+  - BaseType: optional reference [EntityType](#element-entitytype)
+  - Abstract: optional value bool
+  - OpenType: optional value bool
+  - HasStream: optional value bool
 
 <a id="element-complextype"></a>
 
@@ -161,10 +171,10 @@ Reference target kinds:
   - [NavigationProperty](#element-navigationproperty) (0..\*)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - BaseType: String (reference, optional) [ComplexType](#element-complextype)
-  - Abstract: bool (value, optional)
-  - OpenType: bool (value, optional)
+  - Name: required value String
+  - BaseType: optional reference [ComplexType](#element-complextype)
+  - Abstract: optional value bool
+  - OpenType: optional value bool
 
 <a id="element-enumtype"></a>
 
@@ -175,9 +185,9 @@ Reference target kinds:
   - [Member](#element-member) (0..\*)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - UnderlyingType: String (reference, optional) Edm.PrimitiveType
-  - IsFlags: bool (value, optional)
+  - Name: required value String
+  - UnderlyingType: optional reference Edm.PrimitiveType
+  - IsFlags: optional value bool
 
 <a id="element-member"></a>
 
@@ -187,8 +197,8 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Value: Int64 (value, optional)
+  - Name: required value String
+  - Value: optional value Int64
 
 <a id="element-typedefinition"></a>
 
@@ -198,13 +208,13 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - UnderlyingType: String (reference, required) Edm.PrimitiveType
-  - MaxLength: String|Int (value, optional)
-  - Precision: Int (value, optional)
-  - Scale: Int|variable (value, optional; token variable is lowercase)
-  - SRID: Int|variable (value, optional; token variable is lowercase)
-  - Unicode: bool (value, optional)
+  - Name: required value String
+  - UnderlyingType: required reference Edm.PrimitiveType
+  - MaxLength: optional value Int|`max`
+  - Precision: optional value Int
+  - Scale: optional value Int|`variable`
+  - SRID: optional value Int|String
+  - Unicode: optional value bool
 
 <a id="element-term"></a>
 
@@ -214,17 +224,17 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Type: String (reference, required) Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype) | [EntityType](#element-entitytype)
-  - BaseTerm: String (reference, optional) [Term](#element-term)
-  - DefaultValue: String (value, optional)
-  - AppliesTo: String (value, optional)
-  - Nullable: bool (value, optional)
-  - MaxLength: String|Int (value, optional)
-  - Precision: Int (value, optional)
-  - Scale: Int|variable (value, optional; token variable is lowercase)
-  - SRID: Int|variable (value, optional; token variable is lowercase)
-  - Unicode: bool (value, optional)
+  - Name: required value String
+  - Type: required reference Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype) | [EntityType](#element-entitytype)
+  - BaseTerm: optional reference [Term](#element-term)
+  - DefaultValue: optional value String
+  - AppliesTo: optional value String
+  - Nullable: optional value bool
+  - MaxLength: optional value Int|`max`
+  - Precision: optional value Int
+  - Scale: optional value Int|`variable`
+  - SRID: optional value Int|String
+  - Unicode: optional value bool
 
 <a id="element-property"></a>
 
@@ -234,15 +244,15 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Type: String (reference, required) Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype)
-  - Nullable: bool (value, optional)
-  - MaxLength: String|Int (value, optional)
-  - Precision: Int (value, optional)
-  - Scale: Int|variable (value, optional; token variable is lowercase)
-  - SRID: Int|variable (value, optional; token variable is lowercase)
-  - Unicode: bool (value, optional)
-  - DefaultValue: String (value, optional)
+  - Name: required value String
+  - Type: required reference Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype)
+  - Nullable: optional value bool
+  - MaxLength: optional value Int|`max`
+  - Precision: optional value Int
+  - Scale: optional value Int|`variable`
+  - SRID: optional value Int|String
+  - Unicode: optional value bool
+  - DefaultValue: optional value String
 
 <a id="element-navigationproperty"></a>
 
@@ -254,11 +264,11 @@ Reference target kinds:
   - [OnDelete](#element-ondelete) (0..1)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Type: String (reference, required) [EntityType](#element-entitytype)
-  - Nullable: bool (value, optional)
-  - Partner: String (reference, optional) [NavigationProperty](#element-navigationproperty)
-  - ContainsTarget: bool (value, optional)
+  - Name: required value String
+  - Type: required reference [EntityType](#element-entitytype)
+  - Nullable: optional value bool
+  - Partner: optional reference [NavigationProperty](#element-navigationproperty)
+  - ContainsTarget: optional value bool
 
 ## 4. Operation Elements
 
@@ -272,9 +282,9 @@ Reference target kinds:
   - [ReturnType](#element-returntype) (0..1)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - IsBound: bool (value, optional)
-  - EntitySetPath: String (value, optional)
+  - Name: required value String
+  - IsBound: optional value bool
+  - EntitySetPath: optional value String (path expression, relative to the binding parameter)
 
 <a id="element-function"></a>
 
@@ -286,10 +296,10 @@ Reference target kinds:
   - [ReturnType](#element-returntype) (1)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - IsBound: bool (value, optional)
-  - IsComposable: bool (value, optional)
-  - EntitySetPath: String (value, optional)
+  - Name: required value String
+  - IsBound: optional value bool
+  - IsComposable: optional value bool
+  - EntitySetPath: optional value String (path expression, relative to the binding parameter)
 
 <a id="element-parameter"></a>
 
@@ -299,15 +309,15 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Type: String (reference, required) Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype) | [EntityType](#element-entitytype)
-  - Nullable: bool (value, optional)
-  - MaxLength: String|Int (value, optional)
-  - Precision: Int (value, optional)
-  - Scale: Int|variable (value, optional; token variable is lowercase)
-  - SRID: Int|variable (value, optional; token variable is lowercase)
-  - Unicode: bool (value, optional)
-  - DefaultValue: String (value, optional)
+  - Name: required value String
+  - Type: required reference Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype) | [EntityType](#element-entitytype)
+  - Nullable: optional value bool
+  - MaxLength: optional value Int|`max`
+  - Precision: optional value Int
+  - Scale: optional value Int|`variable`
+  - SRID: optional value Int|String
+  - Unicode: optional value bool
+  - DefaultValue: optional value String
 
 <a id="element-returntype"></a>
 
@@ -317,13 +327,13 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Type: String (reference, required) Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype) | [EntityType](#element-entitytype)
-  - Nullable: bool (value, optional)
-  - MaxLength: String|Int (value, optional)
-  - Precision: Int (value, optional)
-  - Scale: Int|variable (value, optional; token variable is lowercase)
-  - SRID: Int|variable (value, optional; token variable is lowercase)
-  - Unicode: bool (value, optional)
+  - Type: required reference Edm.PrimitiveType | [TypeDefinition](#element-typedefinition) | [EnumType](#element-enumtype) | [ComplexType](#element-complextype) | [EntityType](#element-entitytype)
+  - Nullable: optional value bool
+  - MaxLength: optional value Int|`max`
+  - Precision: optional value Int
+  - Scale: optional value Int|`variable`
+  - SRID: optional value Int|String
+  - Unicode: optional value bool
 
 ## 5. Entity Container Elements
 
@@ -339,8 +349,8 @@ Reference target kinds:
   - [FunctionImport](#element-functionimport) (0..\*)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Extends: String (reference, optional) [EntityContainer](#element-entitycontainer)
+  - Name: required value String
+  - Extends: optional reference [EntityContainer](#element-entitycontainer)
 
 <a id="element-entityset"></a>
 
@@ -351,9 +361,9 @@ Reference target kinds:
   - [NavigationPropertyBinding](#element-navigationpropertybinding) (0..\*)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - EntityType: String (reference, required) [EntityType](#element-entitytype)
-  - IncludeInServiceDocument: bool (value, optional)
+  - Name: required value String
+  - EntityType: required reference [EntityType](#element-entitytype)
+  - IncludeInServiceDocument: optional value bool
 
 <a id="element-singleton"></a>
 
@@ -364,9 +374,9 @@ Reference target kinds:
   - [NavigationPropertyBinding](#element-navigationpropertybinding) (0..\*)
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Type: String (reference, required) [EntityType](#element-entitytype)
-  - IncludeInServiceDocument: bool (value, optional)
+  - Name: required value String
+  - Type: required reference [EntityType](#element-entitytype)
+  - IncludeInServiceDocument: optional value bool
 
 <a id="element-actionimport"></a>
 
@@ -376,10 +386,10 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Action: String (reference, required) [Action](#element-action)
-  - EntitySet: String (reference, optional) [EntitySet](#element-entityset)
-  - IncludeInServiceDocument: bool (value, optional)
+  - Name: required value String
+  - Action: required reference [Action](#element-action)
+  - EntitySet: optional reference [EntitySet](#element-entityset)
+  - IncludeInServiceDocument: optional value bool
 
 <a id="element-functionimport"></a>
 
@@ -389,10 +399,10 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Name: String (value, required)
-  - Function: String (reference, required) [Function](#element-function)
-  - EntitySet: String (reference, optional) [EntitySet](#element-entityset)
-  - IncludeInServiceDocument: bool (value, optional)
+  - Name: required value String
+  - Function: required reference [Function](#element-function)
+  - EntitySet: optional reference [EntitySet](#element-entityset)
+  - IncludeInServiceDocument: optional value bool
 
 ## 6. Constraint and Binding Elements
 
@@ -412,8 +422,8 @@ Reference target kinds:
 - Parent: [Key](#element-key)
 - Children: none
 - Attributes:
-  - Name: String (reference, required) [Property](#element-property)
-  - Alias: String (value, optional)
+  - Name: required reference [Property](#element-property)
+  - Alias: optional value String
 
 <a id="element-referentialconstraint"></a>
 
@@ -423,8 +433,8 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Property: String (reference, required) [Property](#element-property)
-  - ReferencedProperty: String (reference, required) [Property](#element-property)
+  - Property: required reference [Property](#element-property)
+  - ReferencedProperty: required reference [Property](#element-property)
 
 <a id="element-ondelete"></a>
 
@@ -434,7 +444,7 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (0..\*)
 - Attributes:
-  - Action: enum (value, required) Cascade | None | SetNull | SetDefault
+  - Action: required value enum Cascade | None | SetNull | SetDefault
 
 <a id="element-navigationpropertybinding"></a>
 
@@ -443,8 +453,8 @@ Reference target kinds:
 - Parent: [EntitySet](#element-entityset) | [Singleton](#element-singleton)
 - Children: none
 - Attributes:
-  - Path: String (reference, required) [NavigationProperty](#element-navigationproperty)
-  - Target: String (reference, required) [EntitySet](#element-entityset) | [Singleton](#element-singleton)
+  - Path: required reference navigation path [NavigationProperty](#element-navigationproperty) (relative to the binding source)
+  - Target: required reference target path [EntitySet](#element-entityset) | [Singleton](#element-singleton) (relative to the containing entity container)
 
 ## 7. Annotation Elements
 
@@ -456,8 +466,8 @@ Reference target kinds:
 - Children:
   - [Annotation](#element-annotation) (1..\*)
 - Attributes:
-  - Target: String (reference, required) model element path
-  - Qualifier: String (value, optional)
+  - Target: required reference model element path (model-level path)
+  - Qualifier: optional value String
 
 <a id="element-annotation"></a>
 
@@ -468,9 +478,9 @@ Reference target kinds:
   - nested [Annotation](#element-annotation) (0..\*)
   - expression payload. Not an Element in the sense used here. Out of scope in this document
 - Attributes:
-  - Term: String (reference, required) [Term](#element-term)
-  - Qualifier: String (value, optional)
-  - Path: String (reference, optional) expression path domain
+  - Term: required reference [Term](#element-term)
+  - Qualifier: optional value String
+  - Path: optional reference expression path domain (context-relative)
 
 ## Resolution Rules
 

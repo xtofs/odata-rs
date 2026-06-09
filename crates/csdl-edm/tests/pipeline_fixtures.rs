@@ -35,6 +35,193 @@ fn parses_all_input_fixtures() {
         );
     }
 }
+#[test]
+fn validates_navigation_property_binding_path_and_target_semantics() {
+    let schema = csdl::Schema {
+        namespace: "Demo".to_owned(),
+        alias: None,
+        elements: vec![
+            csdl::SchemaElement::EntityType(csdl::EntityType {
+                name: "Category".to_owned(),
+                base_type: None,
+                abstract_: None,
+                open_type: None,
+                has_stream: None,
+                key: Some(csdl::Key {
+                    property_refs: vec![csdl::PropertyRef {
+                        name: "ID".to_owned(),
+                    }],
+                }),
+                properties: vec![csdl::Property {
+                    name: "ID".to_owned(),
+                    type_name: Some("Edm.Int32".to_owned()),
+                    is_collection: false,
+                    nullable: Some(false),
+                    max_length: None,
+                    precision: None,
+                    scale: None,
+                    srid: None,
+                    unicode: None,
+                    default_value: None,
+                    annotations: Vec::new(),
+                }],
+                navigation_properties: vec![csdl::NavigationProperty {
+                    name: "Products".to_owned(),
+                    type_name: Some("Demo.Product".to_owned()),
+                    is_collection: true,
+                    nullable: None,
+                    partner: None,
+                    contains_target: Some(false),
+                    on_delete: None,
+                    referential_constraints: Vec::new(),
+                    annotations: Vec::new(),
+                }],
+                annotations: Vec::new(),
+            }),
+            csdl::SchemaElement::EntityType(csdl::EntityType {
+                name: "Product".to_owned(),
+                base_type: None,
+                abstract_: None,
+                open_type: None,
+                has_stream: None,
+                key: Some(csdl::Key {
+                    property_refs: vec![csdl::PropertyRef {
+                        name: "ID".to_owned(),
+                    }],
+                }),
+                properties: vec![csdl::Property {
+                    name: "ID".to_owned(),
+                    type_name: Some("Edm.Int32".to_owned()),
+                    is_collection: false,
+                    nullable: Some(false),
+                    max_length: None,
+                    precision: None,
+                    scale: None,
+                    srid: None,
+                    unicode: None,
+                    default_value: None,
+                    annotations: Vec::new(),
+                }],
+                navigation_properties: vec![csdl::NavigationProperty {
+                    name: "Supplier".to_owned(),
+                    type_name: Some("Demo.Supplier".to_owned()),
+                    is_collection: false,
+                    nullable: None,
+                    partner: None,
+                    contains_target: Some(false),
+                    on_delete: None,
+                    referential_constraints: Vec::new(),
+                    annotations: Vec::new(),
+                }],
+                annotations: Vec::new(),
+            }),
+            csdl::SchemaElement::EntityType(csdl::EntityType {
+                name: "Supplier".to_owned(),
+                base_type: None,
+                abstract_: None,
+                open_type: None,
+                has_stream: None,
+                key: Some(csdl::Key {
+                    property_refs: vec![csdl::PropertyRef {
+                        name: "ID".to_owned(),
+                    }],
+                }),
+                properties: vec![csdl::Property {
+                    name: "ID".to_owned(),
+                    type_name: Some("Edm.Int32".to_owned()),
+                    is_collection: false,
+                    nullable: Some(false),
+                    max_length: None,
+                    precision: None,
+                    scale: None,
+                    srid: None,
+                    unicode: None,
+                    default_value: None,
+                    annotations: Vec::new(),
+                }],
+                navigation_properties: Vec::new(),
+                annotations: Vec::new(),
+            }),
+            csdl::SchemaElement::EntityContainer(csdl::EntityContainer {
+                name: "Container".to_owned(),
+                extends: None,
+                entity_sets: vec![
+                    csdl::EntitySet {
+                        name: "Categories".to_owned(),
+                        entity_type: Some("Demo.Category".to_owned()),
+                        include_in_service_document: None,
+                        navigation_property_bindings: vec![csdl::NavigationPropertyBinding {
+                            path: "Products/Supplier".to_owned(),
+                            target: "Products/Supplier".to_owned(),
+                        }],
+                        annotations: Vec::new(),
+                    },
+                    csdl::EntitySet {
+                        name: "Products".to_owned(),
+                        entity_type: Some("Demo.Product".to_owned()),
+                        include_in_service_document: None,
+                        navigation_property_bindings: Vec::new(),
+                        annotations: Vec::new(),
+                    },
+                ],
+                singletons: vec![csdl::Singleton {
+                    name: "MainSupplier".to_owned(),
+                    type_name: Some("Demo.Supplier".to_owned()),
+                    include_in_service_document: None,
+                    navigation_property_bindings: Vec::new(),
+                    annotations: Vec::new(),
+                }],
+                function_imports: Vec::new(),
+                action_imports: Vec::new(),
+                annotations: Vec::new(),
+            }),
+        ],
+        annotations: Vec::new(),
+    };
+
+    let edmx = csdl::Edmx {
+        version: Some("4.01".to_owned()),
+        references: Vec::new(),
+        schemas: vec![schema],
+    };
+
+    let document =
+        Resolver::resolve_edmx_document(edmx).expect("resolver should build binding structures");
+    let errors = validate_document(&document)
+        .expect_err("validation should detect invalid navigation property binding semantics");
+
+    assert!(errors.iter().any(|error| {
+                    matches!(
+                        error,
+                        ValidationError::InvalidNavigationPropertyBinding {
+                            source_kind,
+                            source,
+                            attribute,
+                            reason,
+                            ..
+                        } if *source_kind == "EntitySet.NavigationPropertyBinding"
+                            && source == "Categories"
+                            && *attribute == "Path"
+                            && *reason == "Only containment navigation segments are allowed before the final segment"
+                    )
+                }));
+
+    assert!(errors.iter().any(|error| {
+        matches!(
+            error,
+            ValidationError::InvalidNavigationPropertyBinding {
+                source_kind,
+                source,
+                attribute,
+                reason,
+                ..
+            } if *source_kind == "EntitySet.NavigationPropertyBinding"
+                && source == "Categories"
+                && *attribute == "Target"
+                && *reason == "Target paths with additional segments must start from a singleton"
+        )
+    }));
+}
 
 #[test]
 fn resolve_and_validate_fixture_expectations() {
