@@ -1,6 +1,7 @@
 //! Semantic validation that is intentionally separate from reference resolution.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use crate::edm::{
     Action, BindingPath, ComplexType, DocumentModel, EntityContainer, EntityContainerElement,
@@ -40,6 +41,14 @@ pub enum ValidationError {
         source_kind: &'static str,
         source: String,
         target: String,
+    },
+    InvalidNavigationPropertyBinding {
+        container: String,
+        source_kind: &'static str,
+        source: String,
+        attribute: &'static str,
+        value: String,
+        reason: &'static str,
     },
     BoundOperationMissingBindingParameter {
         operation_kind: &'static str,
@@ -136,6 +145,7 @@ impl Default for ValidatorEngine {
                 Box::new(UniqueComplexChildNamesRule),
                 Box::new(UniqueEnumMemberNamesRule),
                 Box::new(UniqueEntityContainerChildNamesRule),
+                Box::new(NavigationPropertyBindingSemanticsRule),
                 Box::new(KnownEntityContainerTargetsRule),
                 Box::new(NavigationPartnerConsistencyRule),
                 Box::new(ReferentialConstraintConsistencyRule),
@@ -351,11 +361,116 @@ impl ValidationRule for UniqueEntityContainerChildNamesRule {
 struct DuplicateEntityKeyRule;
 
 struct KnownEntityContainerTargetsRule;
+struct NavigationPropertyBindingSemanticsRule;
 struct NavigationPartnerConsistencyRule;
 struct ReferentialConstraintConsistencyRule;
 struct TermBaseTermCycleRule;
 struct BoundOperationBindingParameterRule;
 struct OperationEntitySetPathRule;
+
+#[derive(Clone)]
+enum StructuredTypeCursor {
+    Entity(Arc<EntityType>),
+    Complex(Arc<ComplexType>),
+}
+
+impl StructuredTypeCursor {
+    fn property(&self, name: &str) -> Option<Arc<crate::edm::Property>> {
+        match self {
+            StructuredTypeCursor::Entity(entity) => entity
+                .properties()
+                .iter()
+                .find(|property| property.name == name)
+                .cloned(),
+            StructuredTypeCursor::Complex(complex) => complex
+                .properties()
+                .iter()
+                .find(|property| property.name == name)
+                .cloned(),
+        }
+    }
+
+    fn navigation_property(&self, name: &str) -> Option<Arc<crate::edm::NavigationProperty>> {
+        match self {
+            StructuredTypeCursor::Entity(entity) => entity
+                .navigation_properties()
+                .iter()
+                .find(|navigation| navigation.name == name)
+                .cloned(),
+            StructuredTypeCursor::Complex(complex) => complex
+                .navigation_properties()
+                .iter()
+                .find(|navigation| navigation.name == name)
+                .cloned(),
+        }
+    }
+}
+
+enum BindingTargetStart {
+    EntitySet,
+    Singleton(Arc<EntityType>),
+}
+
+impl ValidationRule for NavigationPropertyBindingSemanticsRule {
+    fn name(&self) -> &'static str {
+        "navigation_property_binding_semantics"
+    }
+
+    fn visit_model(&self, model: &Model, ctx: &mut ValidationContext) {
+        let Some(container) = model.entity_container.as_ref() else {
+            return;
+        };
+
+        for element in &container.elements {
+            match element.as_ref() {
+                EntityContainerElement::EntitySet(set) => {
+                    for binding in &set.navigation_property_bindings {
+                        validate_navigation_binding_path(
+                            container.name.as_str(),
+                            "EntitySet.NavigationPropertyBinding",
+                            set.name.as_str(),
+                            set.target.clone(),
+                            binding.path.as_str(),
+                            ctx,
+                        );
+
+                        validate_navigation_binding_target(
+                            model,
+                            container,
+                            "EntitySet.NavigationPropertyBinding",
+                            set.name.as_str(),
+                            binding.target.as_str(),
+                            ctx,
+                        );
+                    }
+                }
+                EntityContainerElement::Singleton(singleton) => {
+                    for binding in &singleton.navigation_property_bindings {
+                        validate_navigation_binding_path(
+                            container.name.as_str(),
+                            "Singleton.NavigationPropertyBinding",
+                            singleton.name.as_str(),
+                            singleton.target.clone(),
+                            binding.path.as_str(),
+                            ctx,
+                        );
+
+                        validate_navigation_binding_target(
+                            model,
+                            container,
+                            "Singleton.NavigationPropertyBinding",
+                            singleton.name.as_str(),
+                            binding.target.as_str(),
+                            ctx,
+                        );
+                    }
+                }
+                EntityContainerElement::FunctionImport(_)
+                | EntityContainerElement::ActionImport(_) => {}
+            }
+        }
+    }
+}
 
 impl ValidationRule for KnownEntityContainerTargetsRule {
     fn name(&self) -> &'static str {
@@ -739,6 +854,311 @@ fn validate_entity_set_path(
             reason: "EntitySetPath must start with the binding parameter name",
         });
     }
+}
+
+fn validate_navigation_binding_path(
+    container_name: &str,
+    source_kind: &'static str,
+    source_name: &str,
+    source_type: Arc<EntityType>,
+    path: &str,
+    ctx: &mut ValidationContext,
+) {
+    let mut segments = path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .peekable();
+    if segments.peek().is_none() {
+        ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+            container: container_name.to_owned(),
+            source_kind,
+            source: source_name.to_owned(),
+            attribute: "Path",
+            value: path.to_owned(),
+            reason: "Path must not be empty",
+        });
+        return;
+    }
+
+    let mut effective_segments = segments.collect::<Vec<_>>();
+    let has_terminal_type_cast = effective_segments
+        .last()
+        .map(|segment| segment.contains('.'))
+        .unwrap_or(false);
+    if has_terminal_type_cast {
+        if effective_segments.len() == 1 {
+            ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                container: container_name.to_owned(),
+                source_kind,
+                source: source_name.to_owned(),
+                attribute: "Path",
+                value: path.to_owned(),
+                reason: "Terminal type-cast requires a preceding navigation segment",
+            });
+            return;
+        }
+        effective_segments.pop();
+    }
+
+    let mut current = StructuredTypeCursor::Entity(source_type);
+    let mut saw_final_non_containment_navigation = false;
+
+    for (index, segment) in effective_segments.iter().enumerate() {
+        let is_last = index + 1 == effective_segments.len();
+
+        if segment.contains('.') {
+            // Type-cast segments are allowed, but detailed cast compatibility
+            // requires inheritance metadata that is currently not tracked here.
+            continue;
+        }
+
+        if let Some(navigation) = current.navigation_property(segment) {
+            let contains_target = navigation.contains_target.unwrap_or(false);
+            if is_last {
+                if contains_target {
+                    ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                        container: container_name.to_owned(),
+                        source_kind,
+                        source: source_name.to_owned(),
+                        attribute: "Path",
+                        value: path.to_owned(),
+                        reason: "Final navigation segment in Path must be non-containment",
+                    });
+                    return;
+                }
+                saw_final_non_containment_navigation = true;
+            } else if !contains_target {
+                ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                    container: container_name.to_owned(),
+                    source_kind,
+                    source: source_name.to_owned(),
+                    attribute: "Path",
+                    value: path.to_owned(),
+                    reason: "Only containment navigation segments are allowed before the final segment",
+                });
+                return;
+            }
+
+            let Some(target_entity) = navigation.target.upgrade() else {
+                ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                    container: container_name.to_owned(),
+                    source_kind,
+                    source: source_name.to_owned(),
+                    attribute: "Path",
+                    value: path.to_owned(),
+                    reason: "Navigation segment target cannot be resolved",
+                });
+                return;
+            };
+            current = StructuredTypeCursor::Entity(target_entity);
+            continue;
+        }
+
+        let Some(property) = current.property(segment) else {
+            ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                container: container_name.to_owned(),
+                source_kind,
+                source: source_name.to_owned(),
+                attribute: "Path",
+                value: path.to_owned(),
+                reason: "Path segment does not resolve to a property or navigation property",
+            });
+            return;
+        };
+
+        let ResolvedType::Complex(complex) = &property.ty else {
+            ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                container: container_name.to_owned(),
+                source_kind,
+                source: source_name.to_owned(),
+                attribute: "Path",
+                value: path.to_owned(),
+                reason: "Non-navigation path segments must resolve to complex properties",
+            });
+            return;
+        };
+
+        current = StructuredTypeCursor::Complex(complex.clone());
+    }
+
+    if !saw_final_non_containment_navigation {
+        ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+            container: container_name.to_owned(),
+            source_kind,
+            source: source_name.to_owned(),
+            attribute: "Path",
+            value: path.to_owned(),
+            reason: "Path must end in a navigation property segment",
+        });
+    }
+}
+
+fn validate_navigation_binding_target(
+    model: &Model,
+    container: &EntityContainer,
+    source_kind: &'static str,
+    source_name: &str,
+    target: &str,
+    ctx: &mut ValidationContext,
+) {
+    let mut segments = target
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if segments.is_empty() {
+        ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+            container: container.name.clone(),
+            source_kind,
+            source: source_name.to_owned(),
+            attribute: "Target",
+            value: target.to_owned(),
+            reason: "Target must not be empty",
+        });
+        return;
+    }
+
+    let qualified_container_name = format!("{}.{}", model.namespace, container.name);
+    if segments[0] == qualified_container_name {
+        if segments.len() == 1 {
+            ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                container: container.name.clone(),
+                source_kind,
+                source: source_name.to_owned(),
+                attribute: "Target",
+                value: target.to_owned(),
+                reason: "Qualified container prefix in Target must be followed by a container child",
+            });
+            return;
+        }
+        segments.remove(0);
+    }
+
+    let start = resolve_binding_target_start(container, segments[0]);
+    let Some(start) = start else {
+        return;
+    };
+
+    if segments.len() == 1 {
+        return;
+    }
+
+    let BindingTargetStart::Singleton(singleton_type) = start else {
+        ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+            container: container.name.clone(),
+            source_kind,
+            source: source_name.to_owned(),
+            attribute: "Target",
+            value: target.to_owned(),
+            reason: "Target paths with additional segments must start from a singleton",
+        });
+        return;
+    };
+
+    let mut current = StructuredTypeCursor::Entity(singleton_type);
+    for (index, segment) in segments.iter().enumerate().skip(1) {
+        let is_last = index + 1 == segments.len();
+
+        if let Some(navigation) = current.navigation_property(segment) {
+            let contains_target = navigation.contains_target.unwrap_or(false);
+            if !contains_target {
+                ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                    container: container.name.clone(),
+                    source_kind,
+                    source: source_name.to_owned(),
+                    attribute: "Target",
+                    value: target.to_owned(),
+                    reason: "Target path navigation segments must be containment navigation properties",
+                });
+                return;
+            }
+
+            if !is_last && navigation.is_collection {
+                ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                    container: container.name.clone(),
+                    source_kind,
+                    source: source_name.to_owned(),
+                    attribute: "Target",
+                    value: target.to_owned(),
+                    reason: "Intermediate Target path segments must be single-valued",
+                });
+                return;
+            }
+
+            let Some(target_entity) = navigation.target.upgrade() else {
+                ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                    container: container.name.clone(),
+                    source_kind,
+                    source: source_name.to_owned(),
+                    attribute: "Target",
+                    value: target.to_owned(),
+                    reason: "Target path navigation segment target cannot be resolved",
+                });
+                return;
+            };
+            current = StructuredTypeCursor::Entity(target_entity);
+            continue;
+        }
+
+        let Some(property) = current.property(segment) else {
+            ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                container: container.name.clone(),
+                source_kind,
+                source: source_name.to_owned(),
+                attribute: "Target",
+                value: target.to_owned(),
+                reason: "Target path segment does not resolve to a complex property or containment navigation property",
+            });
+            return;
+        };
+
+        if property.is_collection {
+            ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                container: container.name.clone(),
+                source_kind,
+                source: source_name.to_owned(),
+                attribute: "Target",
+                value: target.to_owned(),
+                reason: "Target path property segments must be single-valued complex properties",
+            });
+            return;
+        }
+
+        let ResolvedType::Complex(complex) = &property.ty else {
+            ctx.push(ValidationError::InvalidNavigationPropertyBinding {
+                container: container.name.clone(),
+                source_kind,
+                source: source_name.to_owned(),
+                attribute: "Target",
+                value: target.to_owned(),
+                reason: "Target path property segments must be complex properties",
+            });
+            return;
+        };
+
+        current = StructuredTypeCursor::Complex(complex.clone());
+    }
+}
+
+fn resolve_binding_target_start<'a>(
+    container: &'a EntityContainer,
+    first_segment: &str,
+) -> Option<BindingTargetStart> {
+    for element in &container.elements {
+        match element.as_ref() {
+            EntityContainerElement::EntitySet(set) if set.name == first_segment => {
+                return Some(BindingTargetStart::EntitySet);
+            }
+            EntityContainerElement::Singleton(singleton) if singleton.name == first_segment => {
+                return Some(BindingTargetStart::Singleton(singleton.target.clone()));
+            }
+            EntityContainerElement::EntitySet(_)
+            | EntityContainerElement::Singleton(_)
+            | EntityContainerElement::FunctionImport(_)
+            | EntityContainerElement::ActionImport(_) => {}
+        }
+    }
+
+    None
 }
 
 fn first_path_segment(path: &str) -> &str {

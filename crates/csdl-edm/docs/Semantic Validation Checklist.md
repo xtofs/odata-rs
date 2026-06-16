@@ -60,8 +60,20 @@ This checklist is now split into:
 
 ### G. Entity container semantics
 
-- [ ] Navigation property bindings resolve to valid navigation paths.
-- [ ] Navigation property bindings target valid entity sets/singletons.
+- [ ] NavigationPropertyBinding.Path resolves from the enclosing entity set/singleton declared entity type.
+- [ ] NavigationPropertyBinding.Path segments are restricted to: type casts, complex properties, and containment navigation properties, followed by a final non-containment navigation property.
+- [ ] NavigationPropertyBinding.Path MUST NOT contain non-containment navigation properties before the final segment.
+- [ ] NavigationPropertyBinding.Path final segment MUST identify a navigation property (or a 4.01 terminal type-cast variant, when supported).
+- [ ] NavigationPropertyBinding.Path type-cast segments are valid and in-scope, and cast position constraints are enforced.
+- [ ] NavigationPropertyBinding.Path complex-property traversal is valid for the current structured type at each segment.
+- [ ] NavigationPropertyBinding.Path containment traversal is valid, including collection-valued containment semantics (binding applies to all items).
+- [ ] NavigationPropertyBinding.Path recursive sub-paths are accepted and interpreted recursively (positive-cycle semantics).
+- [ ] No duplicate NavigationPropertyBinding.Path values within the same binding source, with "most specific path wins" behavior for type-cast-specialized paths.
+- [ ] NavigationPropertyBinding.Target simple identifier resolves to an entity set/singleton in the same entity container.
+- [ ] NavigationPropertyBinding.Target target path resolves to an in-scope entity set, singleton, or direct/indirect containment navigation property of a singleton.
+- [ ] NavigationPropertyBinding.Target target path traversal before the final containment segment is restricted to single-valued complex properties and single-valued containment navigation properties.
+- [ ] NavigationPropertyBinding.Target target path MUST NOT contain non-containment navigation properties before the final segment.
+- [ ] NavigationPropertyBinding.Target terminal segment kind is validated against allowed target kinds (entity set, singleton, containment nav property).
 
 ### H. Function semantics
 

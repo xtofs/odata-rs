@@ -44,6 +44,12 @@ Status legend used below:
 3. Test coverage gaps:
    Need systematic fixture-backed end-to-end and expected-failure coverage.
 
+Related detailed design TODO:
+
+- [path-attribute-resolution-architecture](path-attribute-resolution-architecture.md)
+  Resolver-owned typed/resolved path architecture for CSDL path-like
+  attributes, with `NavigationPropertyBinding` as a reference implementation.
+
 ## 1. Resolver Semantics Gaps
 
 - [ ] Complete inheritance semantics (`EntityType.BaseType`,
