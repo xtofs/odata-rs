@@ -3,7 +3,7 @@
 //! ---------------------------------------------------------------------------
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, Weak};
 
 use crate::{csdl, edm::*};
 
@@ -1199,6 +1199,13 @@ fn resolve_entity_container(
         }
     }
 
+    // Phase 1: create the EntitySet / Singleton Arcs with their bindings left
+    // unset. Targets resolved below may reference sibling sets/singletons, so
+    // every container element must exist before any binding is resolved.
+    let mut pending_sets: Vec<(Arc<EntitySet>, &csdl::EntitySet, Arc<EntityType>)> = Vec::new();
+    let mut pending_singletons: Vec<(Arc<Singleton>, &csdl::Singleton, Arc<EntityType>)> =
+        Vec::new();
+
     for es in &container.entity_sets {
         if element_names.contains_key(&es.name) {
             visiting.pop();
@@ -1217,15 +1224,13 @@ fn resolve_entity_container(
 
         let target = resolve_entity_ref(type_name, entities, ns, aliases)?;
         element_names.insert(es.name.clone(), ());
-        elements.push(Arc::new(EntityContainerElement::EntitySet(Arc::new(
-            EntitySet {
-                name: es.name.clone(),
-                target,
-                navigation_property_bindings: resolve_navigation_property_bindings(
-                    &es.navigation_property_bindings,
-                ),
-            },
-        ))));
+        let set = Arc::new(EntitySet {
+            name: es.name.clone(),
+            target: target.clone(),
+            navigation_property_bindings: OnceLock::new(),
+        });
+        elements.push(Arc::new(EntityContainerElement::EntitySet(set.clone())));
+        pending_sets.push((set, es, target));
     }
 
     for s in &container.singletons {
@@ -1246,15 +1251,13 @@ fn resolve_entity_container(
 
         let target = resolve_entity_ref(type_name, entities, ns, aliases)?;
         element_names.insert(s.name.clone(), ());
-        elements.push(Arc::new(EntityContainerElement::Singleton(Arc::new(
-            Singleton {
-                name: s.name.clone(),
-                target,
-                navigation_property_bindings: resolve_navigation_property_bindings(
-                    &s.navigation_property_bindings,
-                ),
-            },
-        ))));
+        let singleton = Arc::new(Singleton {
+            name: s.name.clone(),
+            target: target.clone(),
+            navigation_property_bindings: OnceLock::new(),
+        });
+        elements.push(Arc::new(EntityContainerElement::Singleton(singleton.clone())));
+        pending_singletons.push((singleton, s, target));
     }
 
     for fi in &container.function_imports {
@@ -1317,6 +1320,45 @@ fn resolve_entity_container(
         ))));
     }
 
+    // Phase 2: now that every set/singleton Arc exists (including any inherited
+    // from `extends`), resolve each binding's path and target against the EDM
+    // graph and fill the deferred `OnceLock`.
+    let mut set_targets: HashMap<String, Weak<EntitySet>> = HashMap::new();
+    let mut singleton_targets: HashMap<String, Weak<Singleton>> = HashMap::new();
+    for element in &elements {
+        match element.as_ref() {
+            EntityContainerElement::EntitySet(set) => {
+                set_targets.insert(set.name.clone(), Arc::downgrade(set));
+            }
+            EntityContainerElement::Singleton(singleton) => {
+                singleton_targets.insert(singleton.name.clone(), Arc::downgrade(singleton));
+            }
+            EntityContainerElement::FunctionImport(_)
+            | EntityContainerElement::ActionImport(_) => {}
+        }
+    }
+
+    for (set, csdl_set, source) in &pending_sets {
+        let bindings = resolve_bindings(
+            &csdl_set.navigation_property_bindings,
+            source,
+            &container.name,
+            &set_targets,
+            &singleton_targets,
+        );
+        let _ = set.navigation_property_bindings.set(bindings);
+    }
+    for (singleton, csdl_singleton, source) in &pending_singletons {
+        let bindings = resolve_bindings(
+            &csdl_singleton.navigation_property_bindings,
+            source,
+            &container.name,
+            &set_targets,
+            &singleton_targets,
+        );
+        let _ = singleton.navigation_property_bindings.set(bindings);
+    }
+
     visiting.pop();
 
     Ok(Arc::new(EntityContainer {
@@ -1334,16 +1376,153 @@ fn entity_container_element_name(element: &Arc<EntityContainerElement>) -> &str 
     }
 }
 
-fn resolve_navigation_property_bindings(
+fn resolve_bindings(
     bindings: &[csdl::NavigationPropertyBinding],
+    source: &Arc<EntityType>,
+    container_name: &str,
+    sets: &HashMap<String, Weak<EntitySet>>,
+    singletons: &HashMap<String, Weak<Singleton>>,
 ) -> Vec<NavigationPropertyBinding> {
     bindings
         .iter()
         .map(|binding| NavigationPropertyBinding {
-            path: binding.path.clone(),
-            target: binding.target.clone(),
+            path: resolve_binding_path(source, &binding.path),
+            target: resolve_binding_target(&binding.target, container_name, sets, singletons),
         })
         .collect()
+}
+
+/// Resolve a binding `Path` against the bound entity type, walking the EDM
+/// graph. Each segment is a navigation property (the terminal, or a containment
+/// hop), or a complex-typed structural property descended into. Type-cast
+/// (qualified) segments are not resolved in v1. A segment that cannot be
+/// resolved becomes [`BindingPath::Unresolved`] and walking stops.
+fn resolve_binding_path(source: &Arc<EntityType>, path: &str) -> Arc<[BindingPath]> {
+    enum Ctx {
+        Entity(Arc<EntityType>),
+        Complex(Arc<ComplexType>),
+    }
+
+    let mut out: Vec<BindingPath> = Vec::new();
+    let mut ctx = Ctx::Entity(source.clone());
+    let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+
+    for (i, part) in parts.iter().enumerate() {
+        let is_last = i + 1 == parts.len();
+
+        // Qualified segment ⇒ type-cast; not resolved in v1.
+        if part.contains('.') {
+            out.push(BindingPath::Unresolved((*part).to_owned()));
+            break;
+        }
+
+        let (navs, props): (&[Arc<NavigationProperty>], &[Arc<Property>]) = match &ctx {
+            Ctx::Entity(e) => (e.navigation_properties(), e.properties()),
+            Ctx::Complex(c) => (c.navigation_properties(), c.properties()),
+        };
+
+        if let Some(nav) = navs.iter().find(|n| n.name == *part) {
+            out.push(BindingPath::NavigationProperty(Arc::downgrade(nav)));
+            if is_last {
+                break;
+            }
+            match nav.target.upgrade() {
+                Some(target) => ctx = Ctx::Entity(target),
+                None => break,
+            }
+        } else if let Some(prop) = props.iter().find(|p| p.name == *part) {
+            out.push(BindingPath::Property(Arc::downgrade(prop)));
+            match &prop.ty {
+                ResolvedType::Complex(complex) if !is_last => ctx = Ctx::Complex(complex.clone()),
+                _ => break,
+            }
+        } else {
+            out.push(BindingPath::Unresolved((*part).to_owned()));
+            break;
+        }
+    }
+
+    Arc::from(out)
+}
+
+/// Resolve a binding `Target` to an entity set / singleton, optionally through a
+/// leading same-container qualifier and a trailing chain of containment
+/// navigation properties. Cross-container / namespace-qualified targets are not
+/// resolved in v1. Unresolved heads become [`BindingPath::Unresolved`].
+fn resolve_binding_target(
+    target: &str,
+    container_name: &str,
+    sets: &HashMap<String, Weak<EntitySet>>,
+    singletons: &HashMap<String, Weak<Singleton>>,
+) -> Arc<[BindingPath]> {
+    let mut out: Vec<BindingPath> = Vec::new();
+    let mut parts: Vec<&str> = target.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.is_empty() {
+        return Arc::from(out);
+    }
+
+    // Optional leading container qualifier (`Container` or `Namespace.Container`)
+    // on a multi-segment target.
+    if parts.len() > 1 {
+        let head = parts[0];
+        let head_local = head.rsplit('.').next().unwrap_or(head);
+        if head.contains('.') {
+            if head_local == container_name {
+                parts.remove(0);
+            } else {
+                // Cross-container target — not resolved in v1.
+                out.push(BindingPath::Unresolved(target.to_owned()));
+                return Arc::from(out);
+            }
+        } else if head == container_name {
+            parts.remove(0);
+        }
+    }
+
+    let Some(first) = parts.first().copied() else {
+        return Arc::from(out);
+    };
+
+    let mut current: Arc<EntityType> = if let Some(weak) = sets.get(first) {
+        out.push(BindingPath::EntitySet(weak.clone()));
+        match weak.upgrade() {
+            Some(set) => set.target.clone(),
+            None => return Arc::from(out),
+        }
+    } else if let Some(weak) = singletons.get(first) {
+        out.push(BindingPath::Singleton(weak.clone()));
+        match weak.upgrade() {
+            Some(singleton) => singleton.target.clone(),
+            None => return Arc::from(out),
+        }
+    } else {
+        out.push(BindingPath::Unresolved(first.to_owned()));
+        return Arc::from(out);
+    };
+
+    // Trailing segments must be containment navigation properties.
+    for part in &parts[1..] {
+        let nav = current
+            .navigation_properties()
+            .iter()
+            .find(|n| n.name == *part && n.contains_target == Some(true))
+            .cloned();
+        match nav {
+            Some(nav) => {
+                out.push(BindingPath::NavigationProperty(Arc::downgrade(&nav)));
+                match nav.target.upgrade() {
+                    Some(target) => current = target,
+                    None => break,
+                }
+            }
+            None => {
+                out.push(BindingPath::Unresolved((*part).to_owned()));
+                break;
+            }
+        }
+    }
+
+    Arc::from(out)
 }
 
 fn resolve_operation_ref<'a, T>(

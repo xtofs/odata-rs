@@ -257,14 +257,35 @@ pub enum EntityContainerElement {
 pub struct EntitySet {
     pub name: String,
     pub target: Arc<EntityType>,
-    pub navigation_property_bindings: Vec<NavigationPropertyBinding>,
+    /// Filled by the resolver after every container element exists, so that
+    /// binding targets can reference sibling sets/singletons.
+    pub navigation_property_bindings: OnceLock<Vec<NavigationPropertyBinding>>,
+}
+
+impl EntitySet {
+    pub fn navigation_property_bindings(&self) -> &[NavigationPropertyBinding] {
+        self.navigation_property_bindings
+            .get()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
 }
 
 #[derive(Debug)]
 pub struct Singleton {
     pub name: String,
     pub target: Arc<EntityType>,
-    pub navigation_property_bindings: Vec<NavigationPropertyBinding>,
+    /// See [`EntitySet::navigation_property_bindings`].
+    pub navigation_property_bindings: OnceLock<Vec<NavigationPropertyBinding>>,
+}
+
+impl Singleton {
+    pub fn navigation_property_bindings(&self) -> &[NavigationPropertyBinding] {
+        self.navigation_property_bindings
+            .get()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
 }
 
 #[derive(Debug)]
@@ -281,8 +302,43 @@ pub struct ActionImport {
     pub entity_set: Option<String>,
 }
 
+/// A resolved navigation property binding: both the source `path` (to the bound
+/// navigation property) and the `target` (the entity set / singleton it is
+/// bound to) are modeled as resolved reference paths over the EDM graph rather
+/// than the raw strings of the syntactic CSDL node.
 #[derive(Debug, Clone)]
 pub struct NavigationPropertyBinding {
-    pub path: String,
-    pub target: String,
+    /// Resolves against the bound entity type; ends at a `NavigationProperty`.
+    pub path: Arc<[BindingPath]>,
+    /// Resolves against the container(s); ends at an `EntitySet`/`Singleton`.
+    pub target: Arc<[BindingPath]>,
+}
+
+/// One segment of a resolved binding `path` or `target`.
+///
+/// Each variant references a named element of the resolved EDM graph. References
+/// are `Weak` to avoid reference cycles among container elements (two entity
+/// sets can legally bind to each other). [`BindingPath::Unresolved`] carries the
+/// authored segment name when it could not be resolved against the model — the
+/// resolver is best-effort and leaves such failures for the validator to report.
+#[derive(Debug, Clone)]
+pub enum BindingPath {
+    /// A (typically complex-typed) structural property traversed on the way to
+    /// the bound navigation property.
+    Property(Weak<Property>),
+    /// A navigation property — the terminal of a `path`, or a containment hop in
+    /// either a `path` or a `target`.
+    NavigationProperty(Weak<NavigationProperty>),
+    /// A type-cast to a derived entity type (reserved; not resolved in v1).
+    EntityType(Weak<EntityType>),
+    /// A type-cast to a derived complex type (reserved; not resolved in v1).
+    ComplexType(Weak<ComplexType>),
+    /// An entity set — the head of a `target`.
+    EntitySet(Weak<EntitySet>),
+    /// A singleton — the head of a `target`.
+    Singleton(Weak<Singleton>),
+    /// A qualifying entity container in a `target` path (reserved).
+    EntityContainer(Weak<EntityContainer>),
+    /// An authored segment name that did not resolve against the model.
+    Unresolved(String),
 }

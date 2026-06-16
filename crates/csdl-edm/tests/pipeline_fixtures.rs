@@ -363,11 +363,11 @@ fn resolves_container_imports_and_navigation_bindings() {
         match element.as_ref() {
             EntityContainerElement::EntitySet(set) => {
                 seen_names.push(set.name.clone());
-                assert_eq!(set.navigation_property_bindings.len(), 1);
+                assert_eq!(set.navigation_property_bindings().len(), 1);
             }
             EntityContainerElement::Singleton(singleton) => {
                 seen_names.push(singleton.name.clone());
-                assert_eq!(singleton.navigation_property_bindings.len(), 1);
+                assert_eq!(singleton.navigation_property_bindings().len(), 1);
             }
             EntityContainerElement::FunctionImport(import_) => {
                 seen_names.push(import_.name.clone());

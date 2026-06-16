@@ -3,8 +3,8 @@
 use std::collections::HashSet;
 
 use crate::edm::{
-    Action, ComplexType, DocumentModel, EntityContainer, EntityContainerElement, EntityType,
-    EnumType, Function, Model, ResolvedType, SchemaElement, Term,
+    Action, BindingPath, ComplexType, DocumentModel, EntityContainer, EntityContainerElement,
+    EntityType, EnumType, Function, Model, ResolvedType, SchemaElement, Term,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,27 +377,25 @@ impl ValidationRule for KnownEntityContainerTargetsRule {
         for element in &container.elements {
             match element.as_ref() {
                 EntityContainerElement::EntitySet(set) => {
-                    for binding in &set.navigation_property_bindings {
-                        let target = first_path_segment(&binding.target);
-                        if !known_targets.contains(target) {
+                    for binding in set.navigation_property_bindings() {
+                        if let Some(target) = unresolved_binding_target(&binding.target) {
                             ctx.push(ValidationError::UnknownContainerTarget {
                                 container: container.name.clone(),
                                 source_kind: "EntitySet.NavigationPropertyBinding",
                                 source: set.name.clone(),
-                                target: binding.target.clone(),
+                                target: target.to_owned(),
                             });
                         }
                     }
                 }
                 EntityContainerElement::Singleton(singleton) => {
-                    for binding in &singleton.navigation_property_bindings {
-                        let target = first_path_segment(&binding.target);
-                        if !known_targets.contains(target) {
+                    for binding in singleton.navigation_property_bindings() {
+                        if let Some(target) = unresolved_binding_target(&binding.target) {
                             ctx.push(ValidationError::UnknownContainerTarget {
                                 container: container.name.clone(),
                                 source_kind: "Singleton.NavigationPropertyBinding",
                                 source: singleton.name.clone(),
-                                target: binding.target.clone(),
+                                target: target.to_owned(),
                             });
                         }
                     }
@@ -745,4 +743,15 @@ fn validate_entity_set_path(
 
 fn first_path_segment(path: &str) -> &str {
     path.split('/').next().unwrap_or(path)
+}
+
+/// Returns the authored name of the first unresolved segment in a binding's
+/// resolved target path, if any. A resolved target that contains a
+/// [`BindingPath::Unresolved`] segment is a target the resolver could not bind
+/// to a known entity set / singleton.
+fn unresolved_binding_target(target: &[BindingPath]) -> Option<&str> {
+    target.iter().find_map(|segment| match segment {
+        BindingPath::Unresolved(name) => Some(name.as_str()),
+        _ => None,
+    })
 }

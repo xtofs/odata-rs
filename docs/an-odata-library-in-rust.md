@@ -1,4 +1,4 @@
-# An Architecture for a Production-Ready OData Service Library in Rust
+# An Architecture for a an OData Service Library in Rust
 
 *An architecture proposal.*
 
