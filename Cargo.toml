@@ -9,9 +9,9 @@ repository = "https://github.com/odata-rs/odata-rs"
 
 
 [workspace]
-members = ["crates/csdl-edm", "crates/url", "crates/service"]
+members = ["crates/csdl-edm", "crates/url", "crates/routing", "crates/service"]
 resolver = "2"
-default-members = ["crates/csdl-edm", "crates/url", "crates/service"]
+default-members = ["crates/csdl-edm", "crates/url", "crates/routing", "crates/service"]
 
 [workspace.package]
 version = "0.0.1"
@@ -20,13 +20,15 @@ version = "0.0.1"
 default = ["full"]
 edm = ["dep:csdl_edm"]
 url = ["dep:odata_url"]
+routing = ["dep:odata_routing"]
 service = ["dep:odata_service"]
 sqlx-sqlite = ["service", "odata_service/sqlx-sqlite"]
-full = ["edm", "url", "service"]
+full = ["edm", "url", "routing", "service"]
 
 [dependencies]
 csdl_edm = { package = "csdl-edm", path = "crates/csdl-edm", optional = true }
 odata_url = { package = "odata-rs-url", path = "crates/url", optional = true }
+odata_routing = { package = "odata-rs-routing", path = "crates/routing", optional = true }
 odata_service = { package = "odata-rs-service", path = "crates/service", optional = true }
 
 # Examples at the workspace root use these. Cargo always provides

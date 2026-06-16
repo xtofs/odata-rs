@@ -165,6 +165,52 @@ The service is constructed through a builder. State is attached once at the star
 
 A handler is a function from `(Context, State)` to a future. The library does not impose its own error type, response wrapper, or extractor traits. Handlers compose with whatever the chosen HTTP-server ecosystem already provides for response types. This keeps the integration boring on purpose: a Temper handler that returns JSON looks like a handler in that ecosystem returning JSON, not like a Temper-specific shape.
 
+### 9.4 URL shape rewriting
+
+**The problem.** OData specifies entity keys using a *subsegment* syntax: the key is parenthesized inside the same URL path segment as the entity-set name — `GET /Rooms('oak-204')`. The URL path has two logical parts (entity set, key) packed into a single segment. Contained navigation doubles the density: `/Rooms('oak-204')/Printers('hp-42')` has four logical parts in three path segments.
+
+Segment-based HTTP routers — axum, actix-web, warp, and their equivalents in other ecosystems — expect each path parameter to occupy its own `/`-delimited segment: `/Rooms/{id}`, `/Rooms/{id}/Printers/{nav_id}`. There is no standard router primitive that matches "everything between the first `(` and `)`" within a segment. Workarounds based on catch-all wildcards or custom regex extractors lose the router's constant-time dispatch, automatic 405 handling, and composability with per-route middleware.
+
+**The solution: middleware rewriting.** A Tower middleware (applied via `middleware::from_fn`) rewrites the request URI *before* it reaches the router. The rewrite is mechanical and stateless:
+
+```text
+/Rooms('oak-204')/Printers('hp-42')?$select=model
+  →  /Rooms/__key__/oak-204/Printers/__key__/hp-42?$select=model
+```
+
+Every `Segment(key)` occurrence becomes three segments: `Segment` / `__key__` / `key`. The sentinel `__key__` is never a legal OData identifier (identifiers are restricted to `[A-Za-z_][A-Za-z0-9_]*`), so it cannot collide with real entity-set names, navigation property names, or OData path markers like `$count` or `$value`.
+
+String-literal keys have their surrounding single quotes stripped during rewriting, so the handler receives the same clean key value regardless of whether the request used subsegment form (`/Rooms('oak-204')`) or segment form (`/Rooms/oak-204`).
+
+**Dual registration.** The router registers *both* route patterns for every keyed endpoint:
+
+| URL shape | Route pattern | Matched by |
+|---|---|---|
+| Segment-style | `/{EntitySet}/{id}` | Direct requests using `/Rooms/oak-204` |
+| Rewrite-style | `/{EntitySet}/__key__/{id}` | Subsegment requests after middleware rewrite |
+
+Both patterns dispatch to the same handler — there is no behavioral difference, only an addressing difference. A contained-navigation entity with a nested key produces:
+
+| Segment-style | Rewrite-style |
+|---|---|
+| `/Rooms/{id}/Printers/{nav_id}` | `/Rooms/__key__/{id}/Printers/__key__/{nav_id}` |
+
+This dual registration means the service accepts requests in either form. Callers that prefer clean REST-style `/Rooms/oak-204` paths use the existing segment routes directly; callers that follow the OData URL convention use `/Rooms('oak-204')` and the middleware rewrites it to match the second route.
+
+**Why middleware, not custom routing.** Three alternatives were considered and rejected:
+
+1. *Catch-all routes with manual dispatch.* A single `/*rest` handler that parses the full OData path sacrifices the router's structural dispatch. Every request enters the same handler regardless of resource shape, and per-route middleware (logging, auth scoping) can no longer be applied selectively.
+
+2. *Custom `matchit` patterns or regex-based segments.* The underlying `matchit` crate supports only prefix, suffix, and wildcard segments — not intra-segment extraction. Regex matchers (supported by some routers but not by axum's) would make route registration non-portable.
+
+3. *Pre-parse the OData URL and inject context via extensions.* This works but pushes the context-per-shape guarantee from the type system (§9.1) into runtime: every handler would receive the same extension type and branch on shape at runtime, losing compile-time exhaustiveness.
+
+The middleware approach preserves all of these properties: O(1) segment-based dispatch, per-route middleware composability, and context types that are compile-time correct for their URL shape.
+
+**Original URI preservation.** The middleware stashes the pre-rewrite URI in request extensions as `OriginalODataUri`. Response builders that need to emit spec-compliant annotations — `@odata.id`, `@odata.editLink`, `@odata.nextLink` — can reconstruct the canonical OData form from this value rather than from the rewritten internal URI.
+
+**Crate boundary.** The rewrite middleware lives in a dedicated `routing` crate (`odata-rs-routing`) rather than in the URL crate or the service crate. The URL crate is a pure parser with no HTTP dependencies (§6, principle 1); adding an axum dependency would violate that. The service crate depends on the routing crate and applies the middleware at router-assembly time, but the rewrite logic itself is HTTP-framework-specific plumbing that other integrations (actix-web, custom routers) would replace.
+
 ## 10. The Data-Access Translation Layer
 
 This is the architecturally interesting part, because it is where most of the work of porting OData to a non-`IQueryable` world lives.

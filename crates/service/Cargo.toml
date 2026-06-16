@@ -15,6 +15,7 @@ sqlx-sqlite = ["dep:sqlx"]
 axum = "0.8.9"
 csdl_edm = { package = "csdl-edm", path = "../csdl-edm" }
 odata_url = { package = "odata-rs-url", path = "../url" }
+odata_routing = { package = "odata-rs-routing", path = "../routing" }
 serde = "1"
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "macros"], optional = true }

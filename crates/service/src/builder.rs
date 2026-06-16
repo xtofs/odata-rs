@@ -11,6 +11,7 @@ use axum::{
 use serde_json::Value as JsonValue;
 
 use crate::schema_view::Schema;
+use odata_routing::{KEY_SEGMENT, ODataRouterExt};
 use odata_url::QueryOptions;
 
 use super::config::{ContainedNavConfig, EntitySetConfig};
@@ -322,7 +323,9 @@ where
             }
 
             // --- entity: /EntitySet/{id} ---
+            // Dual registration: segment-style and rewrite-style (__key__).
             let entity = format!("/{es_name}/{{id}}");
+            let entity_rewrite = format!("/{es_name}/{KEY_SEGMENT}/{{id}}");
             {
                 let get_h = config.get.clone();
                 let update = config.update.clone();
@@ -331,9 +334,7 @@ where
                 let state_get = state.clone();
                 let state_patch = state.clone();
                 let state_delete = state.clone();
-                router = router.route(
-                    &entity,
-                    get({
+                let methods = get({
                         let get_h = get_h.clone();
                         let es = es.clone();
                         move |Path(id): Path<String>, RawQuery(q): RawQuery| {
@@ -398,8 +399,10 @@ where
                                 .await
                             }
                         }
-                    }),
-                );
+                    });
+                router = router
+                    .route(&entity, methods.clone())
+                    .route(&entity_rewrite, methods);
             }
 
             // --- contained nav props ---
@@ -411,8 +414,10 @@ where
                 for nav_name in nav_names {
                     let nav_config = config.contained.get(&nav_name).cloned().unwrap_or_default();
 
-                    // /EntitySet/{id}/NavProp
+                    // /EntitySet/{id}/NavProp — dual registration
                     let nav_collection = format!("/{es_name}/{{id}}/{nav_name}");
+                    let nav_collection_rewrite =
+                        format!("/{es_name}/{KEY_SEGMENT}/{{id}}/{nav_name}");
                     {
                         let list = nav_config.list.clone();
                         let create = nav_config.create.clone();
@@ -420,9 +425,7 @@ where
                         let nav = nav_name.clone();
                         let state_get = state.clone();
                         let state_post = state.clone();
-                        router = router.route(
-                            &nav_collection,
-                            get({
+                        let methods = get({
                                 let list = list.clone();
                                 let esn = esn.clone();
                                 let nav = nav.clone();
@@ -472,12 +475,17 @@ where
                                         .await
                                     }
                                 }
-                            }),
-                        );
+                            });
+                        router = router
+                            .route(&nav_collection, methods.clone())
+                            .route(&nav_collection_rewrite, methods);
                     }
 
-                    // /EntitySet/{id}/NavProp/{nav_id}
+                    // /EntitySet/{id}/NavProp/{nav_id} — dual registration
                     let nav_entity = format!("/{es_name}/{{id}}/{nav_name}/{{nav_id}}");
+                    let nav_entity_rewrite = format!(
+                        "/{es_name}/{KEY_SEGMENT}/{{id}}/{nav_name}/{KEY_SEGMENT}/{{nav_id}}"
+                    );
                     {
                         let get_h = nav_config.get.clone();
                         let update = nav_config.update.clone();
@@ -487,9 +495,7 @@ where
                         let state_get = state.clone();
                         let state_patch = state.clone();
                         let state_delete = state.clone();
-                        router = router.route(
-                            &nav_entity,
-                            get({
+                        let methods = get({
                                 let get_h = get_h.clone();
                                 let esn = esn.clone();
                                 let nav = nav.clone();
@@ -568,8 +574,10 @@ where
                                         .await
                                     }
                                 }
-                            }),
-                        );
+                            });
+                        router = router
+                            .route(&nav_entity, methods.clone())
+                            .route(&nav_entity_rewrite, methods);
                     }
                 }
             }
@@ -579,7 +587,7 @@ where
         // casing, or a typo in the path otherwise produces a body-less 404
         // from axum's default fallback. Replace it with a message that names
         // the unmatched method + path so the client sees what went wrong.
-        router.fallback(unmatched_route)
+        router.fallback(unmatched_route).with_odata_rewrite()
     }
 }
 
