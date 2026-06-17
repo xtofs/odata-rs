@@ -94,12 +94,18 @@ pub enum SchemaElement {
 pub struct EntityType {
     pub name: String,
     pub is_abstract: bool,
-    pub keys: Vec<String>,
+    /// Effective key paths (own + inherited). Each key is a resolved path of
+    /// [`KeyPathSegment`]s rather than a raw string, filled by the resolver in a
+    /// late pass once every entity/complex type has its properties.
+    pub keys: OnceLock<Vec<Arc<[KeyPathSegment]>>>,
     pub properties: OnceLock<Vec<Arc<Property>>>,
     pub navigation_properties: OnceLock<Vec<Arc<NavigationProperty>>>,
 }
 
 impl EntityType {
+    pub fn keys(&self) -> &[Arc<[KeyPathSegment]>] {
+        self.keys.get().map(Vec::as_slice).unwrap_or(&[])
+    }
     pub fn properties(&self) -> &[Arc<Property>] {
         self.properties.get().map(Vec::as_slice).unwrap_or(&[])
     }
@@ -162,7 +168,9 @@ pub struct Function {
     pub name: String,
     pub is_bound: bool,
     pub is_composable: bool,
-    pub entity_set_path: Option<String>,
+    /// Resolved against the binding parameter's type; the head names the binding
+    /// parameter (see [`EntitySetPathSegment`]).
+    pub entity_set_path: Option<Arc<[EntitySetPathSegment]>>,
     pub parameters: Vec<OperationParameter>,
     pub return_type: Option<OperationReturnType>,
 }
@@ -171,7 +179,8 @@ pub struct Function {
 pub struct Action {
     pub name: String,
     pub is_bound: bool,
-    pub entity_set_path: Option<String>,
+    /// See [`Function::entity_set_path`].
+    pub entity_set_path: Option<Arc<[EntitySetPathSegment]>>,
     pub parameters: Vec<OperationParameter>,
     pub return_type: Option<OperationReturnType>,
 }
@@ -208,10 +217,19 @@ pub struct NavigationProperty {
     /// Weak to break entity <-> entity cycles.
     pub target: Weak<EntityType>,
     pub is_collection: bool,
-    pub partner: Option<String>,
+    /// Resolved `Partner` path against the target entity type; ends at a
+    /// navigation property. Filled by the resolver in a late pass once every
+    /// entity's navigation properties exist. Unset when no partner is declared.
+    pub partner: OnceLock<Arc<[BindingPathSegment]>>,
     pub contains_target: Option<bool>,
     pub on_delete: Option<OnDeleteAction>,
     pub referential_constraints: Vec<ReferentialConstraint>,
+}
+
+impl NavigationProperty {
+    pub fn partner(&self) -> Option<&[BindingPathSegment]> {
+        self.partner.get().map(Arc::as_ref)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -288,18 +306,47 @@ impl Singleton {
     }
 }
 
+impl NavigationPropertyBinding {
+    pub fn path_string(&self) -> String {
+        binding_path_segments_to_string(&self.path)
+    }
+
+    pub fn target_string(&self) -> String {
+        binding_path_segments_to_string(&self.target)
+    }
+}
+
 #[derive(Debug)]
 pub struct FunctionImport {
     pub name: String,
     pub function: String,
-    pub entity_set: Option<String>,
+    /// Resolved against the container; ends at an `EntitySet`/`Singleton`. Shares
+    /// the binding-target representation (see [`BindingPathSegment`]).
+    pub entity_set: Option<Arc<[BindingPathSegment]>>,
+}
+
+impl FunctionImport {
+    pub fn entity_set_string(&self) -> Option<String> {
+        self.entity_set
+            .as_deref()
+            .map(binding_path_segments_to_string)
+    }
 }
 
 #[derive(Debug)]
 pub struct ActionImport {
     pub name: String,
     pub action: String,
-    pub entity_set: Option<String>,
+    /// See [`FunctionImport::entity_set`].
+    pub entity_set: Option<Arc<[BindingPathSegment]>>,
+}
+
+impl ActionImport {
+    pub fn entity_set_string(&self) -> Option<String> {
+        self.entity_set
+            .as_deref()
+            .map(binding_path_segments_to_string)
+    }
 }
 
 /// A resolved navigation property binding: both the source `path` (to the bound
@@ -309,36 +356,160 @@ pub struct ActionImport {
 #[derive(Debug, Clone)]
 pub struct NavigationPropertyBinding {
     /// Resolves against the bound entity type; ends at a `NavigationProperty`.
-    pub path: Arc<[BindingPath]>,
+    pub path: Arc<[BindingPathSegment]>,
     /// Resolves against the container(s); ends at an `EntitySet`/`Singleton`.
-    pub target: Arc<[BindingPath]>,
+    pub target: Arc<[BindingPathSegment]>,
 }
 
 /// One segment of a resolved binding `path` or `target`.
 ///
 /// Each variant references a named element of the resolved EDM graph. References
 /// are `Weak` to avoid reference cycles among container elements (two entity
-/// sets can legally bind to each other). [`BindingPath::Unresolved`] carries the
+/// sets can legally bind to each other). [`BindingPathSegment::Unresolved`] carries the
 /// authored segment name when it could not be resolved against the model — the
 /// resolver is best-effort and leaves such failures for the validator to report.
 #[derive(Debug, Clone)]
-pub enum BindingPath {
-    /// A (typically complex-typed) structural property traversed on the way to
+pub enum BindingPathSegment {
+    /// A structural property traversed on the way to
     /// the bound navigation property.
     Property(Weak<Property>),
+
     /// A navigation property — the terminal of a `path`, or a containment hop in
     /// either a `path` or a `target`.
     NavigationProperty(Weak<NavigationProperty>),
+
     /// A type-cast to a derived entity type (reserved; not resolved in v1).
-    EntityType(Weak<EntityType>),
+    EntityTypeCast(Weak<EntityType>),
+
     /// A type-cast to a derived complex type (reserved; not resolved in v1).
-    ComplexType(Weak<ComplexType>),
+    ComplexTypeCast(Weak<ComplexType>),
+
     /// An entity set — the head of a `target`.
     EntitySet(Weak<EntitySet>),
+
     /// A singleton — the head of a `target`.
     Singleton(Weak<Singleton>),
+
     /// A qualifying entity container in a `target` path (reserved).
     EntityContainer(Weak<EntityContainer>),
+
     /// An authored segment name that did not resolve against the model.
     Unresolved(String),
+}
+
+impl BindingPathSegment {
+    pub fn display_name(&self) -> String {
+        match self {
+            Self::Property(property) => property
+                .upgrade()
+                .map(|property| property.name.clone())
+                .unwrap_or_else(|| "<dangling-property>".to_owned()),
+            Self::NavigationProperty(navigation) => navigation
+                .upgrade()
+                .map(|navigation| navigation.name.clone())
+                .unwrap_or_else(|| "<dangling-navigation>".to_owned()),
+            Self::EntityTypeCast(entity_type) => entity_type
+                .upgrade()
+                .map(|entity_type| entity_type.name.clone())
+                .unwrap_or_else(|| "<dangling-entity-type>".to_owned()),
+            Self::ComplexTypeCast(complex_type) => complex_type
+                .upgrade()
+                .map(|complex_type| complex_type.name.clone())
+                .unwrap_or_else(|| "<dangling-complex-type>".to_owned()),
+            Self::EntitySet(entity_set) => entity_set
+                .upgrade()
+                .map(|entity_set| entity_set.name.clone())
+                .unwrap_or_else(|| "<dangling-entity-set>".to_owned()),
+            Self::Singleton(singleton) => singleton
+                .upgrade()
+                .map(|singleton| singleton.name.clone())
+                .unwrap_or_else(|| "<dangling-singleton>".to_owned()),
+            Self::EntityContainer(container) => container
+                .upgrade()
+                .map(|container| container.name.clone())
+                .unwrap_or_else(|| "<dangling-container>".to_owned()),
+            Self::Unresolved(name) => name.clone(),
+        }
+    }
+}
+
+fn binding_path_segments_to_string(path: &[BindingPathSegment]) -> String {
+    path.iter()
+        .map(BindingPathSegment::display_name)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// Render a resolved binding path (or partner path) back to its `Segment/Segment`
+/// string form.
+pub fn binding_path_to_string(path: &[BindingPathSegment]) -> String {
+    binding_path_segments_to_string(path)
+}
+
+/// One segment of a resolved entity key path. A key path walks structural
+/// properties (descending through complex types) and terminates at a primitive
+/// property. [`KeyPathSegment::Unresolved`] carries the authored name when a
+/// segment could not be resolved against the model.
+#[derive(Debug, Clone)]
+pub enum KeyPathSegment {
+    Property(Weak<Property>),
+    Unresolved(String),
+}
+
+impl KeyPathSegment {
+    pub fn display_name(&self) -> String {
+        match self {
+            Self::Property(property) => property
+                .upgrade()
+                .map(|property| property.name.clone())
+                .unwrap_or_else(|| "<dangling-property>".to_owned()),
+            Self::Unresolved(name) => name.clone(),
+        }
+    }
+}
+
+/// Render a resolved key path back to its `Segment/Segment` string form.
+pub fn key_path_to_string(path: &[KeyPathSegment]) -> String {
+    path.iter()
+        .map(KeyPathSegment::display_name)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// One segment of a resolved operation `EntitySetPath`. The head names the
+/// binding parameter; the remaining segments walk that parameter's type via
+/// navigation/structural properties. Type-cast (qualified) segments and any
+/// segment that fails to resolve become [`EntitySetPathSegment::Unresolved`].
+#[derive(Debug, Clone)]
+pub enum EntitySetPathSegment {
+    /// The binding-parameter head of the path.
+    BindingParameter(String),
+    NavigationProperty(Weak<NavigationProperty>),
+    Property(Weak<Property>),
+    Unresolved(String),
+}
+
+impl EntitySetPathSegment {
+    pub fn display_name(&self) -> String {
+        match self {
+            Self::BindingParameter(name) => name.clone(),
+            Self::NavigationProperty(navigation) => navigation
+                .upgrade()
+                .map(|navigation| navigation.name.clone())
+                .unwrap_or_else(|| "<dangling-navigation>".to_owned()),
+            Self::Property(property) => property
+                .upgrade()
+                .map(|property| property.name.clone())
+                .unwrap_or_else(|| "<dangling-property>".to_owned()),
+            Self::Unresolved(name) => name.clone(),
+        }
+    }
+}
+
+/// Render a resolved entity-set path back to its `Segment/Segment` string form.
+pub fn entity_set_path_to_string(path: &[EntitySetPathSegment]) -> String {
+    path.iter()
+        .map(EntitySetPathSegment::display_name)
+        .collect::<Vec<_>>()
+        .join("/")
 }

@@ -1,7 +1,9 @@
 //! Resolution of `NavigationPropertyBinding` Path and Target into reference
-//! paths over the EDM graph (`edm::BindingPath`).
+//! paths over the EDM graph (`edm::BindingPathSegment`).
 
-use csdl_edm::edm::{BindingPath, EntityContainerElement, Model, NavigationPropertyBinding};
+use csdl_edm::edm::{
+  BindingPathSegment, EntityContainerElement, Model, NavigationPropertyBinding,
+};
 use csdl_edm::parser::from_xml_reader;
 use csdl_edm::resolver::Resolver;
 use csdl_edm::validator::{ValidationError, validate_document};
@@ -76,16 +78,16 @@ fn bindings(model: &Model, set_name: &str) -> Vec<NavigationPropertyBinding> {
     panic!("entity set {set_name} not found");
 }
 
-fn nav_name(segment: &BindingPath) -> String {
+fn nav_name(segment: &BindingPathSegment) -> String {
     match segment {
-        BindingPath::NavigationProperty(w) => w.upgrade().expect("nav alive").name.clone(),
+    BindingPathSegment::NavigationProperty(w) => w.upgrade().expect("nav alive").name.clone(),
         other => panic!("expected NavigationProperty segment, got {other:?}"),
     }
 }
 
-fn set_name(segment: &BindingPath) -> String {
+fn set_name(segment: &BindingPathSegment) -> String {
     match segment {
-        BindingPath::EntitySet(w) => w.upgrade().expect("set alive").name.clone(),
+    BindingPathSegment::EntitySet(w) => w.upgrade().expect("set alive").name.clone(),
         other => panic!("expected EntitySet segment, got {other:?}"),
     }
 }
@@ -112,12 +114,14 @@ fn path_through_complex_typed_property_resolves() {
     // Second binding: Path "Info/Owner", Target "Persons".
     let info_owner = b
         .iter()
-        .find(|nb| matches!(nb.path.first(), Some(BindingPath::Property(_))))
+        .find(|nb| matches!(nb.path.first(), Some(BindingPathSegment::Property(_))))
         .expect("binding with a complex-property path");
 
     assert_eq!(info_owner.path.len(), 2);
     match &info_owner.path[0] {
-        BindingPath::Property(w) => assert_eq!(w.upgrade().expect("prop alive").name, "Info"),
+        BindingPathSegment::Property(w) => {
+          assert_eq!(w.upgrade().expect("prop alive").name, "Info")
+        }
         other => panic!("expected Property segment, got {other:?}"),
     }
     assert_eq!(nav_name(&info_owner.path[1]), "Owner");
@@ -147,7 +151,7 @@ fn unknown_target_is_unresolved_and_flagged_by_validator() {
     let b = bindings(&model, "BadSet");
     assert_eq!(b.len(), 1);
     assert!(
-        matches!(&b[0].target[0], BindingPath::Unresolved(name) if name == "MissingSet"),
+        matches!(&b[0].target[0], BindingPathSegment::Unresolved(name) if name == "MissingSet"),
         "expected Unresolved(\"MissingSet\"), got {:?}",
         b[0].target
     );
