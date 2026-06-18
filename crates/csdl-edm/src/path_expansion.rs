@@ -158,12 +158,12 @@ fn expand_collection_path(
     key_segments: usize,
     max_key_segments: usize,
 ) -> (Vec<String>, usize, bool, bool) {
-    let Some(first_key) = target.keys.first() else {
+    let Some(first_key) = target.keys().first() else {
         return (segments, key_segments, false, false);
     };
 
     if key_segments + 1 < max_key_segments {
-        segments.push(format!("{{{}}}", first_key));
+        segments.push(format!("{{{}}}", crate::edm::key_path_to_string(first_key)));
         return (segments, key_segments + 1, true, true);
     }
 

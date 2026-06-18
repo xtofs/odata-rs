@@ -1,9 +1,11 @@
 {
     "cSpell.words": [
         "csdl",
+        "edmx",
         "fmtp",
         "itertools",
         "parameterizing",
+        "peekable",
         "prec",
         "redw",
         "sqlx",

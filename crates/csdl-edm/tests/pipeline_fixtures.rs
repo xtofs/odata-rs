@@ -683,7 +683,10 @@ fn resolves_navigation_semantics_fields() {
         .first()
         .expect("Order.Customer navigation expected");
 
-    assert_eq!(nav.partner.as_deref(), Some("Orders"));
+    assert_eq!(
+        nav.partner().map(csdl_edm::edm::binding_path_to_string),
+        Some("Orders".to_owned())
+    );
     assert_eq!(nav.contains_target, Some(true));
     assert_eq!(nav.on_delete, Some(OnDeleteAction::Cascade));
     assert_eq!(nav.referential_constraints.len(), 1);
@@ -1506,7 +1509,12 @@ fn resolves_inherited_entity_keys() {
         })
         .expect("DerivedEntity expected");
 
-    assert_eq!(derived_entity.keys, vec!["ID".to_owned()]);
+    let key_strings: Vec<String> = derived_entity
+        .keys()
+        .iter()
+        .map(|key| csdl_edm::edm::key_path_to_string(key))
+        .collect();
+    assert_eq!(key_strings, vec!["ID".to_owned()]);
 }
 
 #[test]

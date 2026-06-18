@@ -1,0 +1,918 @@
+{
+  "nodes": [
+    {
+      "id": "ODataDemo",
+      "kind": "Schema",
+      "label": "ODataDemo"
+    },
+    {
+      "id": "ODataDemo.Product",
+      "kind": "EntityType",
+      "label": "Product"
+    },
+    {
+      "id": "ODataDemo.Product/ID",
+      "kind": "Property",
+      "label": "ID"
+    },
+    {
+      "id": "ODataDemo.Product/Description",
+      "kind": "Property",
+      "label": "Description"
+    },
+    {
+      "id": "ODataDemo.Product/ReleaseDate",
+      "kind": "Property",
+      "label": "ReleaseDate"
+    },
+    {
+      "id": "ODataDemo.Product/DiscontinuedDate",
+      "kind": "Property",
+      "label": "DiscontinuedDate"
+    },
+    {
+      "id": "ODataDemo.Product/Rating",
+      "kind": "Property",
+      "label": "Rating"
+    },
+    {
+      "id": "ODataDemo.Product/Price",
+      "kind": "Property",
+      "label": "Price"
+    },
+    {
+      "id": "ODataDemo.Product/Currency",
+      "kind": "Property",
+      "label": "Currency"
+    },
+    {
+      "id": "ODataDemo.Product/Category",
+      "kind": "NavigationProperty",
+      "label": "Category"
+    },
+    {
+      "id": "ODataDemo.Product/Supplier",
+      "kind": "NavigationProperty",
+      "label": "Supplier"
+    },
+    {
+      "id": "ODataDemo.Category",
+      "kind": "EntityType",
+      "label": "Category"
+    },
+    {
+      "id": "ODataDemo.Category/ID",
+      "kind": "Property",
+      "label": "ID"
+    },
+    {
+      "id": "ODataDemo.Category/Name",
+      "kind": "Property",
+      "label": "Name"
+    },
+    {
+      "id": "ODataDemo.Category/Products",
+      "kind": "NavigationProperty",
+      "label": "Products"
+    },
+    {
+      "id": "ODataDemo.Supplier",
+      "kind": "EntityType",
+      "label": "Supplier"
+    },
+    {
+      "id": "ODataDemo.Supplier/ID",
+      "kind": "Property",
+      "label": "ID"
+    },
+    {
+      "id": "ODataDemo.Supplier/Name",
+      "kind": "Property",
+      "label": "Name"
+    },
+    {
+      "id": "ODataDemo.Supplier/Address",
+      "kind": "Property",
+      "label": "Address"
+    },
+    {
+      "id": "ODataDemo.Supplier/Concurrency",
+      "kind": "Property",
+      "label": "Concurrency"
+    },
+    {
+      "id": "ODataDemo.Supplier/Products",
+      "kind": "NavigationProperty",
+      "label": "Products"
+    },
+    {
+      "id": "ODataDemo.Country",
+      "kind": "EntityType",
+      "label": "Country"
+    },
+    {
+      "id": "ODataDemo.Country/Code",
+      "kind": "Property",
+      "label": "Code"
+    },
+    {
+      "id": "ODataDemo.Country/Name",
+      "kind": "Property",
+      "label": "Name"
+    },
+    {
+      "id": "ODataDemo.Address",
+      "kind": "ComplexType",
+      "label": "Address"
+    },
+    {
+      "id": "ODataDemo.Address/Street",
+      "kind": "Property",
+      "label": "Street"
+    },
+    {
+      "id": "ODataDemo.Address/City",
+      "kind": "Property",
+      "label": "City"
+    },
+    {
+      "id": "ODataDemo.Address/State",
+      "kind": "Property",
+      "label": "State"
+    },
+    {
+      "id": "ODataDemo.Address/ZipCode",
+      "kind": "Property",
+      "label": "ZipCode"
+    },
+    {
+      "id": "ODataDemo.Address/CountryName",
+      "kind": "Property",
+      "label": "CountryName"
+    },
+    {
+      "id": "ODataDemo.Address/Country",
+      "kind": "NavigationProperty",
+      "label": "Country"
+    },
+    {
+      "id": "ODataDemo.ProductsByRating",
+      "kind": "Function",
+      "label": "ProductsByRating"
+    },
+    {
+      "id": "ODataDemo.ProductsByRating/Rating",
+      "kind": "Parameter",
+      "label": "Rating"
+    },
+    {
+      "id": "ODataDemo.DemoService",
+      "kind": "EntityContainer",
+      "label": "DemoService"
+    },
+    {
+      "id": "ODataDemo.DemoService/Products",
+      "kind": "EntitySet",
+      "label": "Products"
+    },
+    {
+      "id": "ODataDemo.DemoService/Categories",
+      "kind": "EntitySet",
+      "label": "Categories"
+    },
+    {
+      "id": "ODataDemo.DemoService/Suppliers",
+      "kind": "EntitySet",
+      "label": "Suppliers"
+    },
+    {
+      "id": "ODataDemo.DemoService/Countries",
+      "kind": "EntitySet",
+      "label": "Countries"
+    },
+    {
+      "id": "ODataDemo.DemoService/MainSupplier",
+      "kind": "Singleton",
+      "label": "MainSupplier"
+    },
+    {
+      "id": "ODataDemo.DemoService/ProductsByRating",
+      "kind": "FunctionImport",
+      "label": "ProductsByRating"
+    }
+  ],
+  "edges": [
+    {
+      "id": "ODataDemo->ODataDemo.Product:Contains",
+      "source": "ODataDemo",
+      "target": "ODataDemo.Product",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/ID:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/ID",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/Description:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/Description",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/ReleaseDate:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/ReleaseDate",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/DiscontinuedDate:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/DiscontinuedDate",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/Rating:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/Rating",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/Price:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/Price",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/Currency:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/Currency",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/Category:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/Category",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product/Category->ODataDemo.Category:NavigationTarget",
+      "source": "ODataDemo.Product/Category",
+      "target": "ODataDemo.Category",
+      "kind": "NavigationTarget",
+      "label": "Type"
+    },
+    {
+      "id": "ODataDemo.Product->ODataDemo.Product/Supplier:Declares",
+      "source": "ODataDemo.Product",
+      "target": "ODataDemo.Product/Supplier",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Product/Supplier->ODataDemo.Supplier:NavigationTarget",
+      "source": "ODataDemo.Product/Supplier",
+      "target": "ODataDemo.Supplier",
+      "kind": "NavigationTarget",
+      "label": "Type"
+    },
+    {
+      "id": "ODataDemo->ODataDemo.Category:Contains",
+      "source": "ODataDemo",
+      "target": "ODataDemo.Category",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Category->ODataDemo.Category/ID:Declares",
+      "source": "ODataDemo.Category",
+      "target": "ODataDemo.Category/ID",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Category->ODataDemo.Category/Name:Declares",
+      "source": "ODataDemo.Category",
+      "target": "ODataDemo.Category/Name",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Category->ODataDemo.Category/Products:Declares",
+      "source": "ODataDemo.Category",
+      "target": "ODataDemo.Category/Products",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Category/Products->ODataDemo.Product:NavigationTarget",
+      "source": "ODataDemo.Category/Products",
+      "target": "ODataDemo.Product",
+      "kind": "NavigationTarget",
+      "label": "Type"
+    },
+    {
+      "id": "ODataDemo->ODataDemo.Supplier:Contains",
+      "source": "ODataDemo",
+      "target": "ODataDemo.Supplier",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Supplier->ODataDemo.Supplier/ID:Declares",
+      "source": "ODataDemo.Supplier",
+      "target": "ODataDemo.Supplier/ID",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Supplier->ODataDemo.Supplier/Name:Declares",
+      "source": "ODataDemo.Supplier",
+      "target": "ODataDemo.Supplier/Name",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Supplier->ODataDemo.Supplier/Address:Declares",
+      "source": "ODataDemo.Supplier",
+      "target": "ODataDemo.Supplier/Address",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Supplier/Address->ODataDemo.Address:PropertyType",
+      "source": "ODataDemo.Supplier/Address",
+      "target": "ODataDemo.Address",
+      "kind": "PropertyType",
+      "label": "Type"
+    },
+    {
+      "id": "ODataDemo.Supplier->ODataDemo.Supplier/Concurrency:Declares",
+      "source": "ODataDemo.Supplier",
+      "target": "ODataDemo.Supplier/Concurrency",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Supplier->ODataDemo.Supplier/Products:Declares",
+      "source": "ODataDemo.Supplier",
+      "target": "ODataDemo.Supplier/Products",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Supplier/Products->ODataDemo.Product:NavigationTarget",
+      "source": "ODataDemo.Supplier/Products",
+      "target": "ODataDemo.Product",
+      "kind": "NavigationTarget",
+      "label": "Type"
+    },
+    {
+      "id": "ODataDemo->ODataDemo.Country:Contains",
+      "source": "ODataDemo",
+      "target": "ODataDemo.Country",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Country->ODataDemo.Country/Code:Declares",
+      "source": "ODataDemo.Country",
+      "target": "ODataDemo.Country/Code",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Country->ODataDemo.Country/Name:Declares",
+      "source": "ODataDemo.Country",
+      "target": "ODataDemo.Country/Name",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo->ODataDemo.Address:Contains",
+      "source": "ODataDemo",
+      "target": "ODataDemo.Address",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Address->ODataDemo.Address/Street:Declares",
+      "source": "ODataDemo.Address",
+      "target": "ODataDemo.Address/Street",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Address->ODataDemo.Address/City:Declares",
+      "source": "ODataDemo.Address",
+      "target": "ODataDemo.Address/City",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Address->ODataDemo.Address/State:Declares",
+      "source": "ODataDemo.Address",
+      "target": "ODataDemo.Address/State",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Address->ODataDemo.Address/ZipCode:Declares",
+      "source": "ODataDemo.Address",
+      "target": "ODataDemo.Address/ZipCode",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Address->ODataDemo.Address/CountryName:Declares",
+      "source": "ODataDemo.Address",
+      "target": "ODataDemo.Address/CountryName",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Address->ODataDemo.Address/Country:Declares",
+      "source": "ODataDemo.Address",
+      "target": "ODataDemo.Address/Country",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.Address/Country->ODataDemo.Country:NavigationTarget",
+      "source": "ODataDemo.Address/Country",
+      "target": "ODataDemo.Country",
+      "kind": "NavigationTarget",
+      "label": "Type"
+    },
+    {
+      "id": "ODataDemo->ODataDemo.ProductsByRating:Contains",
+      "source": "ODataDemo",
+      "target": "ODataDemo.ProductsByRating",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.ProductsByRating->ODataDemo.ProductsByRating/Rating:Declares",
+      "source": "ODataDemo.ProductsByRating",
+      "target": "ODataDemo.ProductsByRating/Rating",
+      "kind": "Declares",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.ProductsByRating->ODataDemo.Product:ReturnType",
+      "source": "ODataDemo.ProductsByRating",
+      "target": "ODataDemo.Product",
+      "kind": "ReturnType",
+      "label": "ReturnType"
+    },
+    {
+      "id": "ODataDemo->ODataDemo.DemoService:Contains",
+      "source": "ODataDemo",
+      "target": "ODataDemo.DemoService",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.DemoService->ODataDemo.DemoService/Products:Contains",
+      "source": "ODataDemo.DemoService",
+      "target": "ODataDemo.DemoService/Products",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.DemoService/Products->ODataDemo.Product:EntityType",
+      "source": "ODataDemo.DemoService/Products",
+      "target": "ODataDemo.Product",
+      "kind": "EntityType",
+      "label": "EntityType"
+    },
+    {
+      "id": "ODataDemo.DemoService->ODataDemo.DemoService/Categories:Contains",
+      "source": "ODataDemo.DemoService",
+      "target": "ODataDemo.DemoService/Categories",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.DemoService/Categories->ODataDemo.Category:EntityType",
+      "source": "ODataDemo.DemoService/Categories",
+      "target": "ODataDemo.Category",
+      "kind": "EntityType",
+      "label": "EntityType"
+    },
+    {
+      "id": "ODataDemo.DemoService->ODataDemo.DemoService/Suppliers:Contains",
+      "source": "ODataDemo.DemoService",
+      "target": "ODataDemo.DemoService/Suppliers",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.DemoService/Suppliers->ODataDemo.Supplier:EntityType",
+      "source": "ODataDemo.DemoService/Suppliers",
+      "target": "ODataDemo.Supplier",
+      "kind": "EntityType",
+      "label": "EntityType"
+    },
+    {
+      "id": "ODataDemo.DemoService->ODataDemo.DemoService/Countries:Contains",
+      "source": "ODataDemo.DemoService",
+      "target": "ODataDemo.DemoService/Countries",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.DemoService/Countries->ODataDemo.Country:EntityType",
+      "source": "ODataDemo.DemoService/Countries",
+      "target": "ODataDemo.Country",
+      "kind": "EntityType",
+      "label": "EntityType"
+    },
+    {
+      "id": "ODataDemo.DemoService->ODataDemo.DemoService/MainSupplier:Contains",
+      "source": "ODataDemo.DemoService",
+      "target": "ODataDemo.DemoService/MainSupplier",
+      "kind": "Contains",
+      "label": "has"
+    },
+    {
+      "id": "ODataDemo.DemoService/MainSupplier->ODataDemo.Supplier:SingletonType",
+      "source": "ODataDemo.DemoService/MainSupplier",
+      "target": "ODataDemo.Supplier",
+      "kind": "SingletonType",
+      "label": "Type"
+    },
+    {
+      "id": "ODataDemo.DemoService->ODataDemo.DemoService/ProductsByRating:Contains",
+      "source": "ODataDemo.DemoService",
+      "target": "ODataDemo.DemoService/ProductsByRating",
+      "kind": "Contains",
+      "label": "has"
+    }
+  ],
+  "paths": [
+    {
+      "id": "ODataDemo.Product/key/0",
+      "owner": "ODataDemo.Product",
+      "label": "Key: ID",
+      "segments": [
+        {
+          "node": "ODataDemo.Product",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Product/ID",
+          "order": 2
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.Product/Category/partner",
+      "owner": "ODataDemo.Product/Category",
+      "label": "Partner: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.Category",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Category/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.Product/Supplier/partner",
+      "owner": "ODataDemo.Product/Supplier",
+      "label": "Partner: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.Supplier",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Supplier/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.Category/key/0",
+      "owner": "ODataDemo.Category",
+      "label": "Key: ID",
+      "segments": [
+        {
+          "node": "ODataDemo.Category",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Category/ID",
+          "order": 2
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.Category/Products/partner",
+      "owner": "ODataDemo.Category/Products",
+      "label": "Partner: Category",
+      "segments": [
+        {
+          "node": "ODataDemo.Product",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Product/Category",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Category",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.Supplier/key/0",
+      "owner": "ODataDemo.Supplier",
+      "label": "Key: ID",
+      "segments": [
+        {
+          "node": "ODataDemo.Supplier",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Supplier/ID",
+          "order": 2
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.Supplier/Products/partner",
+      "owner": "ODataDemo.Supplier/Products",
+      "label": "Partner: Supplier",
+      "segments": [
+        {
+          "node": "ODataDemo.Product",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Product/Supplier",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Supplier",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.Country/key/0",
+      "owner": "ODataDemo.Country",
+      "label": "Key: Code",
+      "segments": [
+        {
+          "node": "ODataDemo.Country",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Country/Code",
+          "order": 2
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Products/binding/0/path",
+      "owner": "ODataDemo.DemoService/Products",
+      "label": "Binding path: Category",
+      "segments": [
+        {
+          "node": "ODataDemo.Product",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Product/Category",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Category",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Products/binding/0/target",
+      "owner": "ODataDemo.DemoService/Products",
+      "label": "Binding target: Categories",
+      "segments": [
+        {
+          "node": "ODataDemo.DemoService",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.DemoService/Categories",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Category",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Categories/binding/0/path",
+      "owner": "ODataDemo.DemoService/Categories",
+      "label": "Binding path: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.Category",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Category/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Categories/binding/0/target",
+      "owner": "ODataDemo.DemoService/Categories",
+      "label": "Binding target: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.DemoService",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.DemoService/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Suppliers/binding/0/path",
+      "owner": "ODataDemo.DemoService/Suppliers",
+      "label": "Binding path: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.Supplier",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Supplier/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Suppliers/binding/0/target",
+      "owner": "ODataDemo.DemoService/Suppliers",
+      "label": "Binding target: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.DemoService",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.DemoService/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Suppliers/binding/1/path",
+      "owner": "ODataDemo.DemoService/Suppliers",
+      "label": "Binding path: Address/Country",
+      "segments": [
+        {
+          "node": "ODataDemo.Supplier",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Supplier/Address",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Address",
+          "order": 3
+        },
+        {
+          "node": "ODataDemo.Address/Country",
+          "order": 4
+        },
+        {
+          "node": "ODataDemo.Country",
+          "order": 5
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/Suppliers/binding/1/target",
+      "owner": "ODataDemo.DemoService/Suppliers",
+      "label": "Binding target: Countries",
+      "segments": [
+        {
+          "node": "ODataDemo.DemoService",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.DemoService/Countries",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Country",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/MainSupplier/binding/0/path",
+      "owner": "ODataDemo.DemoService/MainSupplier",
+      "label": "Binding path: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.Supplier",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.Supplier/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/MainSupplier/binding/0/target",
+      "owner": "ODataDemo.DemoService/MainSupplier",
+      "label": "Binding target: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.DemoService",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.DemoService/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    },
+    {
+      "id": "ODataDemo.DemoService/ProductsByRating/entityset",
+      "owner": "ODataDemo.DemoService/ProductsByRating",
+      "label": "EntitySet: Products",
+      "segments": [
+        {
+          "node": "ODataDemo.DemoService",
+          "order": 1
+        },
+        {
+          "node": "ODataDemo.DemoService/Products",
+          "order": 2
+        },
+        {
+          "node": "ODataDemo.Product",
+          "order": 3
+        }
+      ]
+    }
+  ]
+}

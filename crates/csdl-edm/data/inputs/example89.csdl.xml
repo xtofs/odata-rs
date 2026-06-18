@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8"?>
 <edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"
            xmlns="http://docs.oasis-open.org/odata/ns/edm"
            Version="4.0">
@@ -145,7 +145,7 @@
                     </Annotation>
                 </EntitySet>
                 <Singleton Name="MainSupplier"
-                           Type="self.Supplier">
+                           Type="ODataDemo.Supplier">
                     <NavigationPropertyBinding Path="Products"
                                                Target="Products" />
                     <Annotation Term="Core.Description"

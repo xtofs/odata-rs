@@ -1,0 +1,60 @@
+{
+  "nodes": [
+    { "id": "agg1", "kind": "ore:Aggregation", "label": "Aggregation: Starry Night" },
+    { "id": "cho1", "kind": "edm:ProvidedCHO", "label": "The Starry Night" },
+    { "id": "web1", "kind": "edm:WebResource", "label": "Full-res image" },
+    { "id": "web2", "kind": "edm:WebResource", "label": "Thumbnail" },
+    { "id": "agent1", "kind": "edm:Agent", "label": "Vincent van Gogh" },
+    { "id": "place1", "kind": "edm:Place", "label": "Saint-Rémy-de-Provence" },
+    { "id": "time1", "kind": "edm:TimeSpan", "label": "1889" },
+    { "id": "concept1", "kind": "skos:Concept", "label": "Post-Impressionism" },
+    { "id": "agent2", "kind": "edm:Agent", "label": "MoMA" },
+    { "id": "place2", "kind": "edm:Place", "label": "New York" }
+  ],
+  "edges": [
+    { "id": "e1", "source": "agg1", "target": "cho1", "kind": "edm:aggregatedCHO", "label": "aggregatedCHO" },
+    { "id": "e2", "source": "agg1", "target": "web1", "kind": "edm:isShownBy", "label": "isShownBy" },
+    { "id": "e3", "source": "agg1", "target": "web2", "kind": "edm:hasView", "label": "hasView" },
+    { "id": "e4", "source": "cho1", "target": "agent1", "kind": "dc:creator", "label": "creator" },
+    { "id": "e5", "source": "cho1", "target": "time1", "kind": "dcterms:created", "label": "created" },
+    { "id": "e6", "source": "cho1", "target": "concept1", "kind": "dc:subject", "label": "subject" },
+    { "id": "e7", "source": "agent1", "target": "place1", "kind": "edm:hasMet", "label": "hasMet" },
+    { "id": "e8", "source": "cho1", "target": "place1", "kind": "dcterms:spatial", "label": "spatial" },
+    { "id": "e9", "source": "agg1", "target": "agent2", "kind": "edm:provider", "label": "provider" },
+    { "id": "e10", "source": "agent2", "target": "place2", "kind": "edm:hasAddress", "label": "hasAddress" },
+    { "id": "e11", "source": "cho1", "target": "time1", "kind": "edm:happenedAt", "label": "happenedAt" }
+  ],
+  "paths": [
+    {
+      "id": "p1",
+      "owner": "agent2",
+      "label": "Provenance: object → creator → place",
+      "segments": [
+        { "node": "agg1", "edge": null, "order": 0 },
+        { "node": "cho1", "edge": "e1", "order": 1 },
+        { "node": "agent1", "edge": "e4", "order": 2 },
+        { "node": "place1", "edge": "e7", "order": 3 }
+      ]
+    },
+    {
+      "id": "p2",
+      "owner": "agg1",
+      "label": "Display chain: aggregation → views",
+      "segments": [
+        { "node": "agg1", "edge": null, "order": 0 },
+        { "node": "web1", "edge": "e2", "order": 1 },
+        { "node": "web2", "edge": "e3", "order": 2 }
+      ]
+    },
+    {
+      "id": "p3",
+      "owner": "cho1",
+      "label": "Context: object → time → subject",
+      "segments": [
+        { "node": "cho1", "edge": null, "order": 0 },
+        { "node": "time1", "edge": "e5", "order": 1 },
+        { "node": "concept1", "edge": "e6", "order": 2 }
+      ]
+    }
+  ]
+}

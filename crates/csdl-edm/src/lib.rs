@@ -3,6 +3,7 @@ pub mod csdl_json_reader;
 pub mod csdl_xml_reader;
 pub mod edm;
 pub mod error;
+pub mod graph;
 pub mod expr;
 pub mod parser;
 pub mod path_expansion;

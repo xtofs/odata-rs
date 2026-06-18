@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EDM Semantic Graph</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel-bg: #171a21;
+        --border: #2a2f3a;
+        --text: #e6e9ef;
+        --muted: #8b93a7;
+        --node: #6b7280;
+        --node-stroke: #cdd6f4;
+        --edge: #5b6172;
+        --highlight: #ffd166;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        overflow: hidden;
+      }
+
+      #app {
+        display: flex;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      #graph {
+        flex: 1 1 auto;
+        height: 100%;
+        display: block;
+        cursor: grab;
+      }
+
+      #panel {
+        flex: 0 0 280px;
+        height: 100%;
+        background: var(--panel-bg);
+        border-left: 1px solid var(--border);
+        padding: 16px;
+        overflow-y: auto;
+      }
+
+      #panel h1 {
+        font-size: 15px;
+        font-weight: 600;
+        margin: 0 0 4px;
+      }
+
+      #panel .subtitle {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 0 0 16px;
+      }
+
+      #panel h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 16px 0 8px;
+      }
+
+      .path-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.12s ease;
+      }
+
+      .path-row:hover {
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .path-row.selected {
+        background: rgba(255, 255, 255, 0.1);
+        box-shadow: inset 2px 0 0 var(--highlight);
+      }
+
+      .path-swatch {
+        flex: 0 0 12px;
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+      }
+
+      .path-meta {
+        min-width: 0;
+      }
+
+      .path-label {
+        font-size: 13px;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .path-owner {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      /* Hover / highlight states applied to SVG elements. */
+      .dimmed {
+        opacity: 0.12;
+        transition: opacity 0.12s ease;
+      }
+
+      .highlight {
+        opacity: 1;
+      }
+
+      .node circle.highlight {
+        stroke: var(--highlight);
+        stroke-width: 3px;
+      }
+
+      .edge.highlight path,
+      path.edge.highlight {
+        stroke: var(--highlight);
+      }
+
+      /* Path metadata shown on click of a path row. */
+      #path-details {
+        display: none;
+        margin-top: 16px;
+        padding: 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      #path-details.visible {
+        display: block;
+      }
+
+      .pd-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+
+      .pd-swatch {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex: 0 0 12px;
+      }
+
+      .pd-title {
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .pd-meta {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 2px;
+      }
+
+      .pd-meta span {
+        display: inline-block;
+        width: 44px;
+        color: #5f6678;
+      }
+
+      .pd-steps {
+        list-style: none;
+        margin: 10px 0 0;
+        padding: 0;
+      }
+
+      .pd-steps li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 3px 0;
+        font-size: 12px;
+      }
+
+      .pd-order {
+        flex: 0 0 18px;
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        text-align: center;
+        border-radius: 50%;
+        background: var(--border);
+        font-size: 10px;
+        font-weight: 700;
+      }
+
+      .pd-kind {
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      #error {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        text-align: center;
+        color: #ff6b6b;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <svg id="graph"></svg>
+      <aside id="panel">
+        <h1>EDM Semantic Graph</h1>
+        <p class="subtitle">Force-directed view of nodes, edges, and paths.</p>
+        <h2>Paths</h2>
+        <div id="path-list"></div>
+        <div id="path-details"></div>
+      </aside>
+    </div>
+    <div id="error"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
