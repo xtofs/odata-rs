@@ -1,5 +1,7 @@
 # OData in Rust Key Challenges
 
+This is condensed form of the [An Architecture for a an OData Service Library in Rust](an-odata-library-in-rust.md) to be used from discussions or checklists.
+
 ## OData constructs not found in all HTTP APIs
 
 An implementation

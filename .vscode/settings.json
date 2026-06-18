@@ -9,6 +9,7 @@
         "prec",
         "redw",
         "sqlx",
+        "SRID",
         "thiserror"
     ]
 }

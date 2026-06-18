@@ -1,0 +1,1158 @@
+# CSDL 4.01 attribute catalog — machine-readable single source of truth.
+#
+# This file is the normative data behind docs/edm-semantic-graph.md. The human
+# tables in that document are generated from it (scripts/sync_attribute_catalog.py);
+# prose in the document is authored by hand and never generated.
+#
+# Scope: the catalog covers **what CSDL 4.01 expresses, mapped to graph form** —
+# not what any particular resolver implementation materializes. Elements that
+# the reader collapses into parent fields (Edmx → CsdlDocument.edmx,
+# DataServices → Edmx.schemas, Key → EntityType.keys, Annotations → bulk-target
+# Annotation form) are still first-class entries here, with their attributes
+# and containment edges, because they exist in the spec.
+#
+# Terminology: a CSDL document is a *syntactic tree*; resolving it yields the EDM,
+# a *semantic graph*. Attributes are CSDL/syntactic; nodes/edges/paths are the EDM
+# semantic graph. (See the document for the full convention.)
+#
+# Schema
+# ------
+# version : catalog schema version (integer)
+# source  : the spec these rows are taken from
+#
+# [[containment]]  — a structural parent/child (has-a) reference of the syntactic
+#                    tree. Not an attribute. Always an EDM edge labelled "has".
+#   parent     : containing element kind
+#   child      : contained element kind
+#   notes      : optional
+#   (Always projects to an EDM edge labelled "has".)
+#
+# [[attribute]]  — one attribute of one element kind.
+#   element             : the owning CSDL element
+#   name                : the attribute name (XML casing)
+#   category            : "value" | "reference" | "path"
+#   cardinality         : "required" | "optional"
+#   reference_targets   : (category=reference) allowed target element kinds
+#   path_segment_domain : (category=path) resolver segment enum, or a note if
+#                         not yet resolved into typed segments
+#   resolution_context  : (category=path/reference) what the name resolves against
+#   head_kinds          : (category=path, optional) element kinds the FIRST
+#                         segment of the path must resolve to. Omit when the
+#                         head is determined by enclosing context (e.g. the
+#                         owning entity type, the containing schema).
+#   terminal_kinds      : (category=path, optional) element kinds the LAST
+#                         segment of the path must resolve to. This is the
+#                         path's terminator constraint per CSDL.
+#   descent_kinds       : (category=path, optional) intermediate-segment
+#                         constraint: kinds whose presence enables the path
+#                         to continue past them. The classic case is
+#                         "descent through ComplexType-valued structural
+#                         Properties" in key/binding paths.
+#   type                : (category=value, optional) loose TypeScript-style
+#                         type expression for the attribute's value domain.
+#                         If absent, falls back to [value_type_defaults]
+#                         keyed by `name`. See the defaults section below.
+#   notes               : optional free-form prose. Do not duplicate the
+#                         structured constraint or type fields above —
+#                         those render automatically into the doc's Notes
+#                         column.
+#
+# Graph role is DERIVED from category, not stored (it is fully determined by it):
+#   value       -> drop
+#   reference   -> edge to the target node
+#   path        -> a path through the named element nodes (+ implicit type nodes)
+#   containment -> edge labelled "has"
+# Primitive types (Edm.*) are intrinsic nodes of the semantic graph (not authored
+# in CSDL — they are "just there"), so a reference to a primitive is an ordinary
+# edge like any other. A consumer may elide primitive nodes for readability (the
+# visualizer does), but that is a presentation filter, not a property of the graph.
+
+version = 1
+source = "OData CSDL 4.01"
+
+# ---------------------------------------------------------------------------
+# Default types for value attributes, keyed by attribute name.
+#
+# CSDL uses each named attribute consistently across element kinds — `Nullable`
+# is always a boolean, `MaxLength` is always `integer | 'max'`, etc. — so the
+# type is keyed by attribute name and inherited by every value-attribute entry
+# below.
+#
+# Syntax: a loose TypeScript-style type expression. String literals use single
+# quotes; the type union is `|`. Recognized scalars:
+#   - `string`         — arbitrary string
+#   - `identifier`     — CSDL SimpleIdentifier (single segment, regex-constrained,
+#                        max 128 chars per CSDL 4.01 §17.1)
+#   - `namespace`      — one or more SimpleIdentifiers separated by dots, with
+#                        no trailing simple-name (CSDL Namespace, §15.2). E.g.
+#                        `Org.OData.Core.V1`. Distinct from QualifiedName,
+#                        which is `Namespace.SimpleIdentifier` (§15.3) and
+#                        appears only in type-reference attributes.
+#   - `boolean`        — `true` | `false`
+#   - `integer`        — signed integer (may be refined; see below)
+#   - `int64`          — signed 64-bit integer (enum member values)
+#
+# Integer refinement: an integer type may carry an inline range constraint,
+# e.g. `integer > 0`, `integer >= 0`. Parenthesize the integer term when
+# combining with a literal union: `(integer > 0) | 'max'`.
+#
+# An individual [[attribute]] may override its type with its own `type` field
+# (none currently do — listed here for future extensibility).
+# ---------------------------------------------------------------------------
+
+[value_type_defaults]
+Abstract = "boolean"
+Alias = "identifier"
+AppliesTo = "string"                          # whitespace-separated list of element-kind names
+ContainsTarget = "boolean"
+DefaultValue = "string"                       # raw text; concrete shape depends on the host's Type
+HasStream = "boolean"
+IncludeInServiceDocument = "boolean"
+IsBound = "boolean"
+IsComposable = "boolean"
+IsFlags = "boolean"
+MaxLength = "(integer > 0) | 'max'"
+Name = "identifier"
+Namespace = "namespace"
+Nullable = "boolean"
+OpenType = "boolean"
+Precision = "integer >= 0"
+Qualifier = "identifier"
+Scale = "(integer >= 0) | 'floating' | 'variable'"   # additional constraint: Scale <= Precision (not expressible inline)
+SRID = "(integer >= 0) | 'variable'"
+TargetNamespace = "namespace"
+TermNamespace = "namespace"
+Unicode = "boolean"
+Uri = "string"                                # URI; CSDL doesn't define a separate URI type
+Value = "int64"
+Version = "string"                            # CSDL/OData version, e.g. "4.01"
+
+# The OnDelete.Action attribute is the one CSDL value attribute whose type is
+# an explicit enum literal union. Lives on the [[attribute]] entry itself
+# (overrides the empty default).
+
+# ---------------------------------------------------------------------------
+# Containment (structural has-a references; the majority of EDM edges)
+#
+# Note on Annotation: per CSDL 4.01, <Annotation> can be a child of nearly
+# every element in the language. Those edges are implicit and not enumerated
+# here. The single explicit Annotation containment edge below is from the
+# plural <Annotations> wrapper, whose entire purpose is to group Annotations
+# with a shared Target.
+# ---------------------------------------------------------------------------
+
+# --- document envelope ---
+
+[[containment]]
+parent = "Edmx"
+child = "Reference"
+
+[[containment]]
+parent = "Edmx"
+child = "DataServices"
+
+[[containment]]
+parent = "DataServices"
+child = "Schema"
+
+[[containment]]
+parent = "Reference"
+child = "Include"
+
+[[containment]]
+parent = "Reference"
+child = "IncludeAnnotations"
+
+# --- schema-level ---
+
+[[containment]]
+parent = "Schema"
+child = "EntityType"
+
+[[containment]]
+parent = "Schema"
+child = "ComplexType"
+
+[[containment]]
+parent = "Schema"
+child = "EnumType"
+
+[[containment]]
+parent = "Schema"
+child = "TypeDefinition"
+
+[[containment]]
+parent = "Schema"
+child = "Term"
+
+[[containment]]
+parent = "Schema"
+child = "Function"
+
+[[containment]]
+parent = "Schema"
+child = "Action"
+
+[[containment]]
+parent = "Schema"
+child = "EntityContainer"
+
+[[containment]]
+parent = "Schema"
+child = "Annotations"
+
+# --- type-level ---
+
+[[containment]]
+parent = "EntityType"
+child = "Key"
+
+[[containment]]
+parent = "EntityType"
+child = "Property"
+
+[[containment]]
+parent = "EntityType"
+child = "NavigationProperty"
+
+[[containment]]
+parent = "ComplexType"
+child = "Property"
+
+[[containment]]
+parent = "ComplexType"
+child = "NavigationProperty"
+
+[[containment]]
+parent = "EnumType"
+child = "Member"
+
+# --- key & constraint wrappers ---
+
+[[containment]]
+parent = "Key"
+child = "PropertyRef"
+
+[[containment]]
+parent = "NavigationProperty"
+child = "ReferentialConstraint"
+
+[[containment]]
+parent = "NavigationProperty"
+child = "OnDelete"
+
+# --- operation-level ---
+
+[[containment]]
+parent = "Function"
+child = "Parameter"
+
+[[containment]]
+parent = "Function"
+child = "ReturnType"
+
+[[containment]]
+parent = "Action"
+child = "Parameter"
+
+[[containment]]
+parent = "Action"
+child = "ReturnType"
+
+# --- container-level ---
+
+[[containment]]
+parent = "EntityContainer"
+child = "EntitySet"
+
+[[containment]]
+parent = "EntityContainer"
+child = "Singleton"
+
+[[containment]]
+parent = "EntityContainer"
+child = "FunctionImport"
+
+[[containment]]
+parent = "EntityContainer"
+child = "ActionImport"
+
+[[containment]]
+parent = "EntitySet"
+child = "NavigationPropertyBinding"
+
+[[containment]]
+parent = "Singleton"
+child = "NavigationPropertyBinding"
+
+# --- annotation wrappers ---
+
+[[containment]]
+parent = "Annotations"
+child = "Annotation"
+
+# ---------------------------------------------------------------------------
+# Segment domains (per path attribute, what kinds of element a segment can
+# name). The legend under the "Path attributes" table in
+# docs/edm-semantic-graph.md is generated from these.
+#
+# The members must match the resolver's segment enums in
+# crates/csdl-edm/src/edm.rs. Resolver-internal variants that don't appear
+# in CSDL itself (e.g. `Unresolved`, which carries the dangling-reference
+# state) are intentionally NOT listed.
+# ---------------------------------------------------------------------------
+
+[[segment_domain]]
+name = "KeyPathSegment"
+members = ["Property"]
+notes = "intrinsic to a single entity type; descends through ComplexType-valued structural properties, terminates at a primitive. Navigation properties are deliberately excluded — keys must be properties of the entity itself, not of related entities (contrast BindingPathSegment, which is the domain that traverses navigation)"
+
+[[segment_domain]]
+name = "BindingPathSegment"
+members = [
+  "Property",
+  "NavigationProperty",
+  "EntityTypeCast",
+  "ComplexTypeCast",
+  "EntitySet",
+  "Singleton",
+  "EntityContainer",
+]
+notes = "used by NavigationPropertyBinding.Path/Target and NavigationProperty.Partner; head is a container element in `target` form, properties/navs in `path` form"
+
+[[segment_domain]]
+name = "EntitySetPathSegment"
+members = [
+  "BindingParameter",
+  "NavigationProperty",
+  "Property",
+]
+notes = "Function.EntitySetPath / Action.EntitySetPath; starts at the binding parameter"
+
+# ---------------------------------------------------------------------------
+# Edmx (document root)
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Edmx"
+name = "Version"
+category = "value"
+cardinality = "required"
+notes = "CSDL/OData version string, e.g. \"4.01\""
+
+# ---------------------------------------------------------------------------
+# Reference / Include / IncludeAnnotations / DataServices
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Reference"
+name = "Uri"
+category = "value"
+cardinality = "required"
+notes = "absolute URI of the referenced CSDL document"
+
+[[attribute]]
+element = "Include"
+name = "Namespace"
+category = "value"
+cardinality = "required"
+notes = "namespace to import from the referenced document"
+
+[[attribute]]
+element = "Include"
+name = "Alias"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "IncludeAnnotations"
+name = "TermNamespace"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "IncludeAnnotations"
+name = "TargetNamespace"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "IncludeAnnotations"
+name = "Qualifier"
+category = "value"
+cardinality = "optional"
+
+# DataServices and Key are structurally significant but carry no attributes
+# of their own; they appear only in the containment table.
+
+# ---------------------------------------------------------------------------
+# Schema
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Schema"
+name = "Namespace"
+category = "value"
+cardinality = "required"
+notes = "identity of the schema node"
+
+[[attribute]]
+element = "Schema"
+name = "Alias"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# EntityType
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "EntityType"
+name = "Name"
+category = "value"
+cardinality = "required"
+notes = "identity"
+
+[[attribute]]
+element = "EntityType"
+name = "BaseType"
+category = "reference"
+cardinality = "optional"
+reference_targets = ["EntityType"]
+resolution_context = "the schema (qualified or alias-qualified)"
+
+[[attribute]]
+element = "EntityType"
+name = "Abstract"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "EntityType"
+name = "OpenType"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "EntityType"
+name = "HasStream"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# Key / PropertyRef
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "PropertyRef"
+name = "Name"
+category = "path"
+cardinality = "required"
+path_segment_domain = "KeyPathSegment"
+resolution_context = "the entity type, descending through complex types to a primitive property"
+terminal_kinds = ["PrimitiveType"]
+descent_kinds = ["ComplexType"]
+notes = "an entity key"
+
+[[attribute]]
+element = "PropertyRef"
+name = "Alias"
+category = "value"
+cardinality = "optional"
+notes = "renames the key path for use in URLs"
+
+# ---------------------------------------------------------------------------
+# ComplexType
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "ComplexType"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "ComplexType"
+name = "BaseType"
+category = "reference"
+cardinality = "optional"
+reference_targets = ["ComplexType"]
+
+[[attribute]]
+element = "ComplexType"
+name = "Abstract"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ComplexType"
+name = "OpenType"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# EnumType / Member
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "EnumType"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "EnumType"
+name = "UnderlyingType"
+category = "reference"
+cardinality = "optional"
+reference_targets = ["PrimitiveType"]
+notes = "target is an Edm integral primitive (an intrinsic node)"
+
+[[attribute]]
+element = "EnumType"
+name = "IsFlags"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Member"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "Member"
+name = "Value"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# TypeDefinition
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "TypeDefinition"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "TypeDefinition"
+name = "UnderlyingType"
+category = "reference"
+cardinality = "required"
+reference_targets = ["PrimitiveType"]
+notes = "target is an Edm primitive (an intrinsic node)"
+
+[[attribute]]
+element = "TypeDefinition"
+name = "MaxLength"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "TypeDefinition"
+name = "Precision"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "TypeDefinition"
+name = "Scale"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "TypeDefinition"
+name = "SRID"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "TypeDefinition"
+name = "Unicode"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# Term
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Term"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "Term"
+name = "Type"
+category = "reference"
+cardinality = "required"
+reference_targets = ["PrimitiveType", "EnumType", "ComplexType", "EntityType", "TypeDefinition"]
+notes = "may be wrapped in Collection(...)"
+
+[[attribute]]
+element = "Term"
+name = "BaseTerm"
+category = "reference"
+cardinality = "optional"
+reference_targets = ["Term"]
+
+[[attribute]]
+element = "Term"
+name = "AppliesTo"
+category = "value"
+cardinality = "optional"
+notes = "a set of target-kind identifiers, not a symbolic link"
+
+[[attribute]]
+element = "Term"
+name = "DefaultValue"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Term"
+name = "Nullable"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Term"
+name = "MaxLength"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Term"
+name = "Precision"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Term"
+name = "Scale"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Term"
+name = "SRID"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Term"
+name = "Unicode"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# Property
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Property"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "Property"
+name = "Type"
+category = "reference"
+cardinality = "required"
+reference_targets = ["PrimitiveType", "EnumType", "ComplexType", "TypeDefinition"]
+notes = "may be wrapped in Collection(...)"
+
+[[attribute]]
+element = "Property"
+name = "Nullable"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Property"
+name = "MaxLength"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Property"
+name = "Precision"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Property"
+name = "Scale"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Property"
+name = "SRID"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Property"
+name = "Unicode"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Property"
+name = "DefaultValue"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# NavigationProperty / ReferentialConstraint
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "NavigationProperty"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "NavigationProperty"
+name = "Type"
+category = "reference"
+cardinality = "required"
+reference_targets = ["EntityType"]
+notes = "may be wrapped in Collection(...)"
+
+[[attribute]]
+element = "NavigationProperty"
+name = "Nullable"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "NavigationProperty"
+name = "Partner"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "BindingPathSegment"
+resolution_context = "the target entity type; ends at a navigation property"
+terminal_kinds = ["NavigationProperty"]
+descent_kinds = ["ComplexType"]
+
+[[attribute]]
+element = "NavigationProperty"
+name = "ContainsTarget"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "OnDelete"
+name = "Action"
+category = "value"
+cardinality = "required"
+type = "'Cascade' | 'None' | 'SetNull' | 'SetDefault'"
+
+[[attribute]]
+element = "ReferentialConstraint"
+name = "Property"
+category = "path"
+cardinality = "required"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "the dependent entity type"
+terminal_kinds = ["PrimitiveType"]
+descent_kinds = ["ComplexType"]
+notes = "resolver gap — stored as String today"
+
+[[attribute]]
+element = "ReferentialConstraint"
+name = "ReferencedProperty"
+category = "path"
+cardinality = "required"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "the principal entity type"
+terminal_kinds = ["PrimitiveType"]
+descent_kinds = ["ComplexType"]
+notes = "resolver gap — stored as String today"
+
+# ---------------------------------------------------------------------------
+# Function / Action / Parameter / ReturnType
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Function"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "Function"
+name = "IsBound"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Function"
+name = "IsComposable"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Function"
+name = "EntitySetPath"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "EntitySetPathSegment"
+resolution_context = "the binding parameter's type"
+head_kinds = ["BindingParameter"]
+
+[[attribute]]
+element = "Action"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "Action"
+name = "IsBound"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Action"
+name = "EntitySetPath"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "EntitySetPathSegment"
+resolution_context = "the binding parameter's type"
+head_kinds = ["BindingParameter"]
+
+[[attribute]]
+element = "Parameter"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "Parameter"
+name = "Type"
+category = "reference"
+cardinality = "required"
+reference_targets = ["PrimitiveType", "EnumType", "ComplexType", "EntityType", "TypeDefinition"]
+notes = "may be wrapped in Collection(...)"
+
+[[attribute]]
+element = "Parameter"
+name = "Nullable"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Parameter"
+name = "MaxLength"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Parameter"
+name = "Precision"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Parameter"
+name = "Scale"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Parameter"
+name = "SRID"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Parameter"
+name = "Unicode"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Parameter"
+name = "DefaultValue"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ReturnType"
+name = "Type"
+category = "reference"
+cardinality = "required"
+reference_targets = ["PrimitiveType", "EnumType", "ComplexType", "EntityType", "TypeDefinition"]
+notes = "may be wrapped in Collection(...)"
+
+[[attribute]]
+element = "ReturnType"
+name = "Nullable"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ReturnType"
+name = "MaxLength"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ReturnType"
+name = "Precision"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ReturnType"
+name = "Scale"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ReturnType"
+name = "SRID"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ReturnType"
+name = "Unicode"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# EntityContainer and its elements
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "EntityContainer"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "EntityContainer"
+name = "Extends"
+category = "reference"
+cardinality = "optional"
+reference_targets = ["EntityContainer"]
+
+[[attribute]]
+element = "EntitySet"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "EntitySet"
+name = "EntityType"
+category = "reference"
+cardinality = "required"
+reference_targets = ["EntityType"]
+
+[[attribute]]
+element = "EntitySet"
+name = "IncludeInServiceDocument"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Singleton"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "Singleton"
+name = "Type"
+category = "reference"
+cardinality = "required"
+reference_targets = ["EntityType"]
+
+[[attribute]]
+element = "Singleton"
+name = "IncludeInServiceDocument"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "NavigationPropertyBinding"
+name = "Path"
+category = "path"
+cardinality = "required"
+path_segment_domain = "BindingPathSegment"
+resolution_context = "the bound entity type; ends at a navigation property"
+terminal_kinds = ["NavigationProperty"]
+descent_kinds = ["ComplexType"]
+
+[[attribute]]
+element = "NavigationPropertyBinding"
+name = "Target"
+category = "path"
+cardinality = "required"
+path_segment_domain = "BindingPathSegment"
+resolution_context = "the entity container; ends at an entity set or singleton"
+head_kinds = ["EntityContainer"]
+terminal_kinds = ["EntitySet", "Singleton"]
+
+[[attribute]]
+element = "FunctionImport"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "FunctionImport"
+name = "Function"
+category = "reference"
+cardinality = "required"
+reference_targets = ["Function"]
+
+[[attribute]]
+element = "FunctionImport"
+name = "EntitySet"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "BindingPathSegment"
+resolution_context = "the entity container (name-or-path union)"
+terminal_kinds = ["EntitySet"]
+
+[[attribute]]
+element = "FunctionImport"
+name = "IncludeInServiceDocument"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "ActionImport"
+name = "Name"
+category = "value"
+cardinality = "required"
+
+[[attribute]]
+element = "ActionImport"
+name = "Action"
+category = "reference"
+cardinality = "required"
+reference_targets = ["Action"]
+
+[[attribute]]
+element = "ActionImport"
+name = "EntitySet"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "BindingPathSegment"
+resolution_context = "the entity container (name-or-path union)"
+terminal_kinds = ["EntitySet"]
+
+[[attribute]]
+element = "ActionImport"
+name = "IncludeInServiceDocument"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# Annotations (plural) — bulk-target wrapper holding one or more Annotation
+# children that share the same Target.
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Annotations"
+name = "Target"
+category = "path"
+cardinality = "required"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "a model element (the shared annotation target)"
+notes = "model-element path; resolver gap"
+
+[[attribute]]
+element = "Annotations"
+name = "Qualifier"
+category = "value"
+cardinality = "optional"
+
+# ---------------------------------------------------------------------------
+# Annotation
+# ---------------------------------------------------------------------------
+
+[[attribute]]
+element = "Annotation"
+name = "Term"
+category = "reference"
+cardinality = "required"
+reference_targets = ["Term"]
+
+[[attribute]]
+element = "Annotation"
+name = "Qualifier"
+category = "value"
+cardinality = "optional"
+
+[[attribute]]
+element = "Annotation"
+name = "Target"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "a model element (the annotation target)"
+notes = "Annotations.Target / external-targeting path; resolver gap"
+
+# Path-valued annotation expressions (carried inside an Annotation's value).
+[[attribute]]
+element = "Annotation.expression"
+name = "Path"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "the annotation target's type/context"
+notes = "dynamic path expression; resolver gap"
+
+[[attribute]]
+element = "Annotation.expression"
+name = "PropertyPath"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "the annotation target's type"
+terminal_kinds = ["PrimitiveType"]
+descent_kinds = ["ComplexType"]
+notes = "resolver gap"
+
+[[attribute]]
+element = "Annotation.expression"
+name = "NavigationPropertyPath"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "the annotation target's type"
+terminal_kinds = ["NavigationProperty"]
+descent_kinds = ["ComplexType"]
+notes = "resolver gap"
+
+[[attribute]]
+element = "Annotation.expression"
+name = "AnnotationPath"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "the annotation target's type"
+terminal_kinds = ["Annotation"]
+notes = "resolver gap"
+
+[[attribute]]
+element = "Annotation.expression"
+name = "ModelElementPath"
+category = "path"
+cardinality = "optional"
+path_segment_domain = "(not yet typed: String)"
+resolution_context = "the model"
+notes = "spec construct; resolver gap"

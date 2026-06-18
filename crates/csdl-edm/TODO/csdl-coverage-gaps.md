@@ -104,5 +104,7 @@ Related detailed design TODO:
 
 ## 6. Documentation Hygiene
 
-- [ ] Keep `docs/CSDL-4.01-MetaModel.md` domain-focused; keep implementation
-      status and delivery tracking in TODO files only.
+- [ ] Authoritative spec model lives in `docs/csdl-attribute-catalog.toml`
+      (top-level repo) and the rendered `docs/edm-semantic-graph.md`. Keep
+      this TODO file focused on delivery tracking; the catalog is the source
+      of truth for what CSDL 4.01 expresses.
